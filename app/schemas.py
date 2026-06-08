@@ -56,35 +56,6 @@ class RecordRequest(BaseModel):
         return value
 
 
-class ThumbnailRequest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    r2_url: str
-    text: str
-    upload_url: str
-    api_key: str
-
-    @field_validator("r2_url", "upload_url")
-    @classmethod
-    def validate_http_url(cls, value: str, info: Any) -> str:
-        if not isinstance(value, str):
-            raise ValueError(f"{info.field_name}_uri")
-        parsed = urlparse(value)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError(f"{info.field_name}_uri")
-        return value
-
-    @field_validator("text", "api_key")
-    @classmethod
-    def validate_required_text(cls, value: str, info: Any) -> str:
-        if not isinstance(value, str):
-            raise ValueError(f"{info.field_name}_required")
-        trimmed = value.strip()
-        if not trimmed:
-            raise ValueError(f"{info.field_name}_empty")
-        return trimmed
-
-
 RECORD_MESSAGES = {
     "count": {
         "greater_than_equal": "Số lượng đom đóm phải >= 10",
@@ -133,26 +104,6 @@ RECORD_MESSAGES = {
     },
 }
 
-THUMBNAIL_MESSAGES = {
-    "r2_url": {
-        "missing": "r2_url là bắt buộc",
-        "value_error": "r2_url phải là URL hợp lệ (http/https)",
-    },
-    "text": {
-        "missing": "text là bắt buộc",
-        "value_error": "text không được để trống",
-    },
-    "upload_url": {
-        "missing": "upload_url là bắt buộc",
-        "value_error": "upload_url phải là URL hợp lệ (http/https)",
-    },
-    "api_key": {
-        "missing": "api_key là bắt buộc",
-        "value_error": "api_key không được để trống",
-    },
-}
-
-
 def _field_from_error(error: dict[str, Any]) -> str:
     loc = [str(part) for part in error.get("loc", []) if part != "body"]
     return loc[-1] if loc else ""
@@ -164,15 +115,5 @@ def format_record_errors(exc: ValidationError) -> list[dict[str, str]]:
         field = _field_from_error(error)
         error_type = error.get("type", "")
         message = RECORD_MESSAGES.get(field, {}).get(error_type, error.get("msg", "Invalid value"))
-        details.append({"field": field, "message": message})
-    return details
-
-
-def format_thumbnail_errors(exc: ValidationError) -> list[dict[str, str]]:
-    details = []
-    for error in exc.errors():
-        field = _field_from_error(error)
-        error_type = error.get("type", "")
-        message = THUMBNAIL_MESSAGES.get(field, {}).get(error_type, error.get("msg", "Invalid value"))
         details.append({"field": field, "message": message})
     return details

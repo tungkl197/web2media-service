@@ -70,16 +70,6 @@ class ServerConfig:
     public_dir: Path = BASE_DIR / "public"
     max_concurrent: int = _env_int("MAX_CONCURRENT", 3)
     max_duration: int = 120
-    thumbnail_template_dir: Path = BASE_DIR / "templates"
-    background_path: Path = BASE_DIR / "public" / "background.png"
-    download_timeout: int = _env_int("DOWNLOAD_TIMEOUT", 30_000)
-    upload_timeout: int = _env_int("UPLOAD_TIMEOUT", 60_000)
-    font_load_wait: int = _env_int("FONT_LOAD_WAIT", 1_000)
-    thumbnail_viewport: dict[str, int] = None
-
-    def __post_init__(self) -> None:
-        if self.thumbnail_viewport is None:
-            object.__setattr__(self, "thumbnail_viewport", {"width": 1920, "height": 1080})
 
 
 SERVER_CONFIG = ServerConfig()

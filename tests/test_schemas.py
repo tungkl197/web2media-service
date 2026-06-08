@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from app.schemas import RecordRequest, ThumbnailRequest, format_record_errors, format_thumbnail_errors
+from app.schemas import RecordRequest, format_record_errors
 
 
 def test_record_request_applies_defaults_and_ignores_unknown_fields():
@@ -21,16 +21,3 @@ def test_record_request_formats_validation_errors_like_api_contract():
 
     assert details == [{"field": "count", "message": "Số lượng đom đóm phải <= 300"}]
 
-
-def test_thumbnail_request_requires_http_urls_and_text():
-    try:
-        ThumbnailRequest.model_validate({"r2_url": "ftp://example.com/a.png", "upload_url": "", "api_key": ""})
-    except ValidationError as exc:
-        details = format_thumbnail_errors(exc)
-    else:
-        raise AssertionError("Expected validation error")
-
-    assert {"field": "r2_url", "message": "r2_url phải là URL hợp lệ (http/https)"} in details
-    assert {"field": "text", "message": "text là bắt buộc"} in details
-    assert {"field": "upload_url", "message": "upload_url phải là URL hợp lệ (http/https)"} in details
-    assert {"field": "api_key", "message": "api_key không được để trống"} in details

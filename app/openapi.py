@@ -151,35 +151,6 @@ RECORD_REQUEST_SCHEMA: dict[str, Any] = {
     },
 }
 
-THUMBNAIL_REQUEST_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "required": ["r2_url", "text", "upload_url", "api_key"],
-    "properties": {
-        "r2_url": {
-            "type": "string",
-            "format": "uri",
-            "example": "https://example.com/girl.jpg",
-            "description": "Public URL của ảnh nhân vật.",
-        },
-        "text": {
-            "type": "string",
-            "example": "Tôi đòi <green>nghỉ việc</green>",
-            "description": "Text thumbnail. Hỗ trợ tag màu: green, red, blue, yellow, white.",
-        },
-        "upload_url": {
-            "type": "string",
-            "format": "uri",
-            "example": "https://api.example.com",
-            "description": "Base URL của dịch vụ upload. API sẽ gọi /api/public/v1/upload.",
-        },
-        "api_key": {
-            "type": "string",
-            "example": "my-api-key",
-            "description": "API key gửi qua header Authorization khi upload.",
-        },
-    },
-}
-
 RECORD_EXAMPLES: dict[str, Any] = {
     "minimal": {
         "summary": "Tối giản",
@@ -257,27 +228,6 @@ RECORD_EXAMPLES: dict[str, Any] = {
     },
 }
 
-THUMBNAIL_EXAMPLES: dict[str, Any] = {
-    "default": {
-        "summary": "Thumbnail chuẩn",
-        "value": {
-            "r2_url": "https://example.com/girl.jpg",
-            "text": "Tôi đòi <green>nghỉ việc</green>",
-            "upload_url": "https://api.example.com",
-            "api_key": "my-api-key",
-        },
-    },
-    "multi_color": {
-        "summary": "Text nhiều màu",
-        "value": {
-            "r2_url": "https://example.com/person.png",
-            "text": "<red>Sếp tổng</red> nghe xong <blue>phát điên</blue>",
-            "upload_url": "https://upload.example.com",
-            "api_key": "Bearer your-token",
-        },
-    },
-}
-
 
 def build_custom_openapi(app: FastAPI) -> dict[str, Any]:
     if app.openapi_schema:
@@ -292,7 +242,6 @@ def build_custom_openapi(app: FastAPI) -> dict[str, Any]:
 
     components = openapi_schema.setdefault("components", {}).setdefault("schemas", {})
     components["RecordRequest"] = RECORD_REQUEST_SCHEMA
-    components["ThumbnailRequest"] = THUMBNAIL_REQUEST_SCHEMA
 
     record = openapi_schema["paths"]["/api/record"]["post"]
     record.update(
@@ -321,32 +270,6 @@ def build_custom_openapi(app: FastAPI) -> dict[str, Any]:
                 "400": {"description": "Tham số không hợp lệ"},
                 "429": {"description": "Quá nhiều tiến trình đồng thời"},
                 "500": {"description": "Lỗi server"},
-            },
-        }
-    )
-
-    thumbnail = openapi_schema["paths"]["/api/generate-thumbnail"]["post"]
-    thumbnail.update(
-        {
-            "tags": ["Thumbnail"],
-            "summary": "Tạo thumbnail PNG và upload",
-            "description": "Download ảnh, render thumbnail PNG bằng template, sau đó upload tới dịch vụ bên ngoài.",
-            "requestBody": {
-                "required": True,
-                "content": {
-                    "application/json": {
-                        "schema": {"$ref": "#/components/schemas/ThumbnailRequest"},
-                        "examples": THUMBNAIL_EXAMPLES,
-                    }
-                },
-            },
-            "responses": {
-                "200": {"description": "Upload API response"},
-                "400": {"description": "Không tải được ảnh hoặc request network lỗi"},
-                "422": {"description": "Validation error"},
-                "429": {"description": "Quá nhiều tiến trình đồng thời"},
-                "500": {"description": "Lỗi server"},
-                "502": {"description": "Upload API trả lỗi"},
             },
         }
     )

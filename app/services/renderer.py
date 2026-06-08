@@ -149,39 +149,6 @@ async def render_video(params: RecordRequest) -> Path:
         await _decrement_recordings()
 
 
-async def render_thumbnail(html_content: str) -> bytes:
-    page: Page | None = None
-
-    try:
-        browser = await get_browser()
-        page = await browser.new_page()
-        await page.set_viewport_size(
-            {
-                "width": SERVER_CONFIG.thumbnail_viewport["width"],
-                "height": SERVER_CONFIG.thumbnail_viewport["height"],
-            }
-        )
-        await page.set_content(html_content, wait_until="networkidle")
-        await asyncio.sleep(SERVER_CONFIG.font_load_wait / 1000)
-
-        thumbnail = await page.query_selector("#thumbnail")
-        if thumbnail:
-            return await thumbnail.screenshot(type="png")
-
-        return await page.screenshot(
-            type="png",
-            clip={
-                "x": 0,
-                "y": 0,
-                "width": SERVER_CONFIG.thumbnail_viewport["width"],
-                "height": SERVER_CONFIG.thumbnail_viewport["height"],
-            },
-        )
-    finally:
-        if page:
-            await page.close()
-
-
 async def close_browser() -> None:
     global _browser, _playwright
 

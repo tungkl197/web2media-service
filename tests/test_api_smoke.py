@@ -36,10 +36,3 @@ def test_record_validation_contract():
         "details": [{"field": "count", "message": "Số lượng đom đóm phải <= 300"}],
     }
 
-
-def test_thumbnail_validation_contract():
-    with TestClient(app) as client:
-        response = client.post("/api/generate-thumbnail", json={})
-
-    assert response.status_code == 422
-    assert response.json()["error"] == "Validation failed"

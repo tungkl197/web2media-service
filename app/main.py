@@ -10,7 +10,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import JSONResponse
 
 from app.api.record import router as record_router
-from app.api.thumbnail import router as thumbnail_router
 from app.config import SERVER_CONFIG
 from app.openapi import build_custom_openapi
 from app.services.renderer import close_browser
@@ -34,7 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Web2Media Service",
     version="1.0.0",
-    description="Server-side API để tạo video animation và thumbnail.",
+    description="Server-side API để tạo video animation.",
     docs_url="/docs",
     redoc_url=None,
     lifespan=lifespan,
@@ -75,7 +74,6 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
 
 app.mount("/public", StaticFiles(directory=str(SERVER_CONFIG.public_dir)), name="public")
 app.include_router(record_router)
-app.include_router(thumbnail_router)
 
 
 def custom_openapi():
@@ -90,11 +88,10 @@ async def root():
     return {
         "name": "Web2Media Service",
         "version": "1.0.0",
-        "description": "Server-side API để tạo video animation và thumbnail",
+        "description": "Server-side API để tạo video animation",
         "documentation": f"http://localhost:{SERVER_CONFIG.port}/docs",
         "endpoints": {
             "POST /api/record": "Tạo video với cấu hình tùy chỉnh",
-            "POST /api/generate-thumbnail": "Tạo thumbnail PNG và upload",
             "GET /api/presets": "Danh sách preset có sẵn",
             "GET /api/health": "Kiểm tra trạng thái server",
             "GET /docs": "Swagger UI - Interactive API documentation",
