@@ -6,7 +6,7 @@ services:
       - "4526:4526"
     restart: unless-stopped
     environment:
-      - NODE_ENV=production
+      - PYTHON_ENV=production
     env_file:
       - .env
     networks:

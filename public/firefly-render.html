@@ -76,7 +76,7 @@
 
     const GLOW_MAP = { low: 1, mid: 2, high: 4 };
 
-    // ── Config state (will be overwritten by Puppeteer) ──
+    // ── Config state (will be overwritten by the server-side renderer) ──
     let config = window.__FIREFLY_CONFIG || {
       bgIndex: 1, bgCustom: null,
       count: 80, size: 2.5, speed: 1.0,
@@ -248,10 +248,10 @@
       }
     }
 
-    // ── Exposed API for Puppeteer ──
+    // ── Exposed API for the server-side renderer ──
 
     /**
-     * Apply external config from Puppeteer
+     * Apply external config from the server-side renderer
      * @param {Object} cfg - Configuration object
      */
     window.__applyConfig = function (cfg) {
