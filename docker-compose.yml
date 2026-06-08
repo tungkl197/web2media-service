@@ -1,0 +1,21 @@
+services:
+  web2media-service:
+    build: .
+    image: web2media-service:latest
+    ports:
+      - "4526:4526"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    networks:
+      internal_shared:
+        aliases:
+          - web2media-service 
+      default: {}
+
+networks:
+  internal_shared:
+    external: true
+    name: internal_shared

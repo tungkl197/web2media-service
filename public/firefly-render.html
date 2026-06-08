@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firefly Render (Headless)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a0f1e; overflow: hidden; }
+
+    #bg-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+
+    #bg-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: radial-gradient(ellipse at 50% 80%, rgba(0, 30, 10, 0.45) 0%, rgb(5 10 20 / 44%) 100%);
+      pointer-events: none;
+    }
+
+    #firefly-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="bg-layer"></div>
+  <div id="bg-overlay"></div>
+  <canvas id="firefly-canvas"></canvas>
+
+  <script>
+    // ── Presets data ──
+    const BG_PRESETS = [
+      { label: 'Rừng', gradient: 'radial-gradient(ellipse at 30% 60%, #0d2b14 0%, #050e08 60%, #020608 100%)' },
+      { label: 'Đêm', gradient: 'radial-gradient(ellipse at 50% 100%, #0d1535 0%, #040810 60%, #010205 100%)' },
+      { label: 'Hoàng hôn', gradient: 'linear-gradient(170deg, #0d0510 0%, #2a0e20 40%, #0a0508 100%)' },
+      { label: 'Ao hồ', gradient: 'radial-gradient(ellipse at 50% 80%, #071e2e 0%, #030c14 50%, #010408 100%)' },
+      { label: 'Núi', gradient: 'linear-gradient(160deg, #070a14 0%, #111828 40%, #050710 100%)' },
+      { label: 'Lúa', gradient: 'radial-gradient(ellipse at 50% 90%, #1a2208 0%, #0a0e04 60%, #040602 100%)' },
+      { label: 'Biển', gradient: 'linear-gradient(180deg, #03060e 0%, #061224 40%, #040d1a 100%)' },
+      { label: 'Tím', gradient: 'radial-gradient(ellipse at 50% 100%, #1e0f35 0%, #08051a 60%, #03020c 100%)' },
+    ];
+
+    const COLOR_PRESETS = [
+      { name: 'Xanh lá', h: 105, s: 85, l: 65 },
+      { name: 'Vàng', h: 55, s: 95, l: 68 },
+      { name: 'Xanh lam', h: 195, s: 90, l: 65 },
+      { name: 'Cam', h: 35, s: 95, l: 65 },
+      { name: 'Trắng', h: 0, s: 0, l: 90 },
+      { name: 'Hồng', h: 320, s: 80, l: 75 },
+    ];
+
+    const DIR_VECTORS = {
+      'up': { vx: 0, vy: -1 },
+      'down': { vx: 0, vy: 1 },
+      'left': { vx: -1, vy: 0 },
+      'right': { vx: 1, vy: 0 },
+      'up-left': { vx: -0.71, vy: -0.71 },
+      'up-right': { vx: 0.71, vy: -0.71 },
+      'down-left': { vx: -0.71, vy: 0.71 },
+      'down-right': { vx: 0.71, vy: 0.71 },
+      'random': { vx: 0, vy: 0 },
+    };
+
+    const GLOW_MAP = { low: 1, mid: 2, high: 4 };
+
+    // ── Config state (will be overwritten by Puppeteer) ──
+    let config = window.__FIREFLY_CONFIG || {
+      bgIndex: 1, bgCustom: null,
+      count: 80, size: 2.5, speed: 1.0,
+      colorMode: 'preset',
+      colorIndex: 0,
+      customColor: '#7fff9a',
+      glowLevel: 'mid',
+      direction: 'up',
+      spread: 0.4,
+    };
+
+    // ── Canvas setup ──
+    const canvas = document.getElementById('firefly-canvas');
+    const ctx = canvas.getContext('2d');
+    let fireflies = [], animId;
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ── Hex to HSL ──
+    function hexToHsl(hex) {
+      let r = parseInt(hex.slice(1, 3), 16) / 255;
+      let g = parseInt(hex.slice(3, 5), 16) / 255;
+      let b = parseInt(hex.slice(5, 7), 16) / 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      let h, s, l = (max + min) / 2;
+      if (max === min) { h = s = 0; }
+      else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+          case g: h = ((b - r) / d + 2) / 6; break;
+          case b: h = ((r - g) / d + 4) / 6; break;
+        }
+      }
+      return { h: h * 360, s: s * 100, l: l * 100 };
+    }
+
+    // ── Firefly class ──
+    class Firefly {
+      constructor() { this.reset(true); }
+
+      reset(init = false) {
+        const W = canvas.width, H = canvas.height;
+        const dir = config.direction;
+        const vec = DIR_VECTORS[dir];
+        const spd = (Math.random() * 0.5 + 0.4) * config.speed;
+        const spread = config.spread;
+
+        if (dir === 'random') {
+          const angle = Math.random() * Math.PI * 2;
+          this.vx = Math.cos(angle) * spd;
+          this.vy = Math.sin(angle) * spd;
+        } else {
+          const perp = spread * (Math.random() * 2 - 1);
+          this.vx = (vec.vx + (-vec.vy) * perp) * spd;
+          this.vy = (vec.vy + (vec.vx) * perp) * spd;
+        }
+
+        if (init) {
+          this.x = Math.random() * W;
+          this.y = Math.random() * H;
+        } else {
+          this._spawnFromEdge(W, H);
+        }
+
+        this.driftAngle = Math.random() * Math.PI * 2;
+        this.driftSpeed = (Math.random() - 0.5) * 0.03;
+        this.driftAmp = Math.random() * 0.5 + 0.1;
+        this.phase = Math.random() * Math.PI * 2;
+        this.blinkSpeed = Math.random() * 0.04 + 0.015;
+        this.baseAlpha = Math.random() * 0.45 + 0.55;
+        this.size = config.size * (Math.random() * 0.6 + 0.7);
+
+        let c;
+        if (config.colorMode === 'custom') {
+          c = hexToHsl(config.customColor);
+        } else {
+          const preset = COLOR_PRESETS[config.colorIndex];
+          c = { h: preset.h, s: preset.s, l: preset.l };
+        }
+        this.color = {
+          h: c.h + (Math.random() * 18 - 9),
+          s: Math.max(0, c.s + (Math.random() * 18 - 9)),
+          l: c.l + (Math.random() * 14 - 7),
+        };
+      }
+
+      _spawnFromEdge(W, H) {
+        const dir = config.direction;
+        if (dir === 'up') { this.x = Math.random() * W; this.y = H + 15; }
+        else if (dir === 'down') { this.x = Math.random() * W; this.y = -15; }
+        else if (dir === 'left') { this.x = W + 15; this.y = Math.random() * H; }
+        else if (dir === 'right') { this.x = -15; this.y = Math.random() * H; }
+        else if (dir === 'up-left') { const t = Math.random(); this.x = t < 0.5 ? Math.random() * W : W + 15; this.y = t < 0.5 ? H + 15 : Math.random() * H; }
+        else if (dir === 'up-right') { const t = Math.random(); this.x = t < 0.5 ? Math.random() * W : -15; this.y = t < 0.5 ? H + 15 : Math.random() * H; }
+        else if (dir === 'down-left') { const t = Math.random(); this.x = t < 0.5 ? Math.random() * W : W + 15; this.y = t < 0.5 ? -15 : Math.random() * H; }
+        else if (dir === 'down-right') { const t = Math.random(); this.x = t < 0.5 ? Math.random() * W : -15; this.y = t < 0.5 ? -15 : Math.random() * H; }
+        else { this.x = Math.random() * W; this.y = Math.random() * H; }
+      }
+
+      update() {
+        this.driftAngle += this.driftSpeed;
+        const px = -this.vy * this.driftAmp * Math.sin(this.driftAngle) * 0.3;
+        const py = this.vx * this.driftAmp * Math.sin(this.driftAngle) * 0.3;
+        this.x += this.vx + px;
+        this.y += this.vy + py;
+        this.phase += this.blinkSpeed;
+
+        const M = 25;
+        const W = canvas.width, H = canvas.height;
+        if (this.x < -M || this.x > W + M || this.y < -M || this.y > H + M) {
+          this.reset(false);
+        }
+      }
+
+      draw() {
+        const pulse = Math.sin(this.phase) * 0.5 + 0.5;
+        const alpha = this.baseAlpha * (0.35 + 0.65 * pulse);
+        const glowMul = GLOW_MAP[config.glowLevel];
+        const glow = this.size * (2 + pulse * glowMul * 3);
+        const { h, s, l } = this.color;
+
+        const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, glow);
+        grad.addColorStop(0, `hsla(${h},${s}%,${l}%,${alpha})`);
+        grad.addColorStop(0.3, `hsla(${h},${s}%,${l}%,${alpha * 0.55})`);
+        grad.addColorStop(1, `hsla(${h},${s}%,${l}%,0)`);
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, glow, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * (0.45 + pulse * 0.55), 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${h},${Math.min(100, s + 25)}%,${Math.min(100, l + 20)}%,${alpha})`;
+        ctx.fill();
+      }
+    }
+
+    // ── Animation ──
+    function initFireflies() {
+      cancelAnimationFrame(animId);
+      fireflies = Array.from({ length: config.count }, () => new Firefly());
+      loop();
+    }
+
+    function loop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const f of fireflies) { f.update(); f.draw(); }
+      animId = requestAnimationFrame(loop);
+    }
+
+    // ── Apply background ──
+    function applyBackground() {
+      const bg = document.getElementById('bg-layer');
+      bg.style.cssText = '';
+      if (config.bgCustom) {
+        bg.style.backgroundImage = 'url(' + config.bgCustom + ')';
+        bg.style.backgroundSize = 'cover';
+        bg.style.backgroundPosition = 'center';
+        bg.style.backgroundRepeat = 'no-repeat';
+      } else {
+        bg.style.background = BG_PRESETS[config.bgIndex].gradient;
+      }
+    }
+
+    // ── Exposed API for Puppeteer ──
+
+    /**
+     * Apply external config from Puppeteer
+     * @param {Object} cfg - Configuration object
+     */
+    window.__applyConfig = function (cfg) {
+      config = { ...config, ...cfg };
+      applyBackground();
+      initFireflies();
+    };
+
+    /**
+     * Start recording and return blob data as base64
+     * @param {number} duration - Duration in seconds
+     * @param {number} fps - Frames per second
+     * @param {number} bitrate - Video bitrate in bps
+     * @returns {Promise<string>} Base64-encoded webm video data
+     */
+    window.__startRecording = function (duration, fps, bitrate) {
+      return new Promise((resolve, reject) => {
+        const W = canvas.width, H = canvas.height;
+        const offscreen = document.createElement('canvas');
+        offscreen.width = W;
+        offscreen.height = H;
+        const offCtx = offscreen.getContext('2d');
+
+        function drawFrame() {
+          offCtx.clearRect(0, 0, W, H);
+          // Draw background
+          if (config.bgCustom) {
+            if (!drawFrame._img || drawFrame._imgSrc !== config.bgCustom) {
+              drawFrame._img = new Image();
+              drawFrame._img.src = config.bgCustom;
+              drawFrame._imgSrc = config.bgCustom;
+            }
+            if (drawFrame._img.complete) {
+              const iw = drawFrame._img.naturalWidth, ih = drawFrame._img.naturalHeight;
+              const scale = Math.max(W / iw, H / ih);
+              const sw = iw * scale, sh = ih * scale;
+              offCtx.drawImage(drawFrame._img, (W - sw) / 2, (H - sh) / 2, sw, sh);
+            }
+          } else {
+            const grad = BG_PRESETS[config.bgIndex].gradient;
+            offCtx.fillStyle = grad;
+            offCtx.fillRect(0, 0, W, H);
+          }
+          // Dark vignette overlay
+          const vig = offCtx.createRadialGradient(W / 2, H * 0.8, 0, W / 2, H * 0.8, W * 0.9);
+          vig.addColorStop(0, 'rgba(0,30,10,0.45)');
+          vig.addColorStop(1, 'rgba(5,10,20,0.75)');
+          offCtx.fillStyle = vig;
+          offCtx.fillRect(0, 0, W, H);
+          // Draw firefly canvas on top
+          offCtx.drawImage(canvas, 0, 0);
+        }
+
+        // Patched loop that also draws on offscreen
+        function patchedLoop() {
+          offCtx.clearRect(0, 0, W, H);
+          ctx.clearRect(0, 0, W, H);
+          for (const f of fireflies) { f.update(); f.draw(); }
+          drawFrame();
+          animId = requestAnimationFrame(patchedLoop);
+        }
+        cancelAnimationFrame(animId);
+        patchedLoop();
+
+        // Start MediaRecorder
+        const stream = offscreen.captureStream(fps);
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+          ? 'video/webm;codecs=vp9' : 'video/webm';
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: bitrate,
+        });
+        const chunks = [];
+
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: mimeType });
+          // Convert blob to base64
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            // Restore normal loop
+            cancelAnimationFrame(animId);
+            loop();
+            // Return base64 data (strip data URL prefix)
+            const base64 = reader.result.split(',')[1];
+            resolve(base64);
+          };
+          reader.onerror = () => reject('Failed to read recording blob');
+          reader.readAsDataURL(blob);
+        };
+
+        recorder.onerror = (e) => reject('MediaRecorder error: ' + e.error);
+
+        recorder.start(200); // Collect data every 200ms
+
+        // Stop after duration
+        setTimeout(() => {
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        }, duration * 1000);
+      });
+    };
+
+    // ── Signal that page is ready ──
+    window.__PAGE_READY = false;
+
+    // ── Init ──
+    applyBackground();
+    initFireflies();
+    window.__PAGE_READY = true;
+  </script>
+</body>
+
+</html>

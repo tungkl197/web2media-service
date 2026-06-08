@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Paytone+One&display=swap" rel="stylesheet">
+  <style>
+    /* ===== Reset & Base ===== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-color: #1a1a2e;
+    }
+
+    /* ===== Thumbnail Container ===== */
+    .thumbnail {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+    }
+
+    /* ===== Layer 1: Ảnh cô gái (z-index thấp nhất) ===== */
+    .girl-image {
+      position: absolute;
+      z-index: 1;
+      right: 0;
+      top: 0;
+      height: 100%;
+      width: 41%;
+      object-fit: cover;
+      object-position: center top;
+    }
+
+    /* ===== Layer 2: Ảnh nền giấy nhăn (z-index giữa) ===== */
+    .background-image {
+      position: absolute;
+      z-index: 2;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* ===== Layer 3: Text (z-index cao nhất) ===== */
+    .text-container {
+      position: absolute;
+      z-index: 3;
+      left: 0px;
+      bottom: 0px;
+      width: 1200px;
+      height: 550px;
+    }
+
+    .text-layer {
+      max-width: 990px;
+      text-align: center;
+      margin: auto;
+    }
+
+    .title {
+      font-family: 'Paytone One', sans-serif;
+      font-size: 95px;
+      color: #363636;
+      line-height: 1.26;
+      letter-spacing: 1.7px;
+    }
+
+    /* ===== Color classes ===== */
+    .green-text {
+      color: #4ca626;
+    }
+
+    .red-text {
+      color: #cc0000;
+    }
+
+    .blue-text {
+      color: #2196f3;
+    }
+
+    .yellow-text {
+      color: #f9a825;
+    }
+
+    .white-text {
+      color: #ffffff;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="thumbnail" id="thumbnail">
+    <!-- Layer 1: Ảnh cô gái (z-index thấp nhất) -->
+    <img class="girl-image" src="{{ girl_image }}" alt="Girl" id="girl-image">
+
+    <!-- Layer 2: Ảnh nền giấy nhăn (z-index giữa) -->
+    <img class="background-image" src="{{ background_image }}" alt="Background" id="background-image">
+
+    <!-- Layer 3: Text (z-index cao nhất) -->
+    <div class="text-container">
+      <div class="text-layer" id="text-layer">
+        <p class="title" id="main-title">
+          {{ text_html | safe }}
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
