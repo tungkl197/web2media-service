@@ -12,6 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
+    libxfixes3 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcursor1 \
+    libxext6 \
+    libxi6 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
     libgbm1 \
     libasound2 \
     libpango-1.0-0 \
