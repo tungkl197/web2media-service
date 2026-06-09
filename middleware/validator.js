@@ -5,8 +5,14 @@
 
 const Joi = require('joi');
 
-// ── Recording request schema ──
-const recordSchema = Joi.object({
+const audioUrlsSchema = Joi.array().items(
+  Joi.string().uri({ scheme: ['http', 'https'] })
+    .messages({ 'string.uri': 'audioUrls chỉ chấp nhận URL http/https hợp lệ' })
+).max(20).default([])
+  .messages({ 'array.max': 'audioUrls tối đa 20 URL' });
+
+// ── Firefly video config schema ──
+const fireflyVideoConfigSchema = Joi.object({
   // Firefly config
   count: Joi.number().integer().min(10).max(300).default(80)
     .messages({
@@ -48,7 +54,7 @@ const recordSchema = Joi.object({
   bgUrl: Joi.string().uri().allow(null, '').default(null)
     .messages({ 'string.uri': 'bgUrl phải là URL hợp lệ' }),
 
-  // Recording
+  // Video output
   duration: Joi.number().integer().min(3).max(120).default(10)
     .messages({
       'number.min': 'Thời lượng phải >= 3 giây',
@@ -78,13 +84,22 @@ const recordSchema = Joi.object({
       'string.pattern.base': 'Tên file chỉ được chứa chữ cái, số, dấu gạch ngang và gạch dưới',
       'string.max': 'Tên file tối đa 100 ký tự',
     }),
+}).options({ stripUnknown: true }).default();
+
+// ── Firefly video record request schema ──
+const fireflyVideoRecordSchema = Joi.object({
+  config: fireflyVideoConfigSchema,
+  audioUrls: audioUrlsSchema,
+  audio_urls: audioUrlsSchema,
+  r2: Joi.forbidden()
+    .messages({ 'any.unknown': 'r2 không được truyền vào API. Cấu hình R2 được lấy từ runtime_configs.' }),
 }).options({ stripUnknown: true });
 
 /**
- * Express middleware to validate recording request body
+ * Express middleware to validate firefly video record request body
  */
-function validateRecordRequest(req, res, next) {
-  const { error, value } = recordSchema.validate(req.body, { abortEarly: false });
+function validateFireflyVideoRecordRequest(req, res, next) {
+  const { error, value } = fireflyVideoRecordSchema.validate(req.body, { abortEarly: false });
 
   if (error) {
     const errors = error.details.map(d => ({
@@ -98,60 +113,21 @@ function validateRecordRequest(req, res, next) {
     });
   }
 
-  // Replace body with validated + defaulted values
-  req.body = value;
-  next();
-}
+  const audioUrls = [
+    ...(value.audioUrls || []),
+    ...(value.audio_urls || []),
+  ];
 
-// ── Thumbnail request schema ──
-const thumbnailSchema = Joi.object({
-  r2_url: Joi.string().uri({ scheme: ['http', 'https'] }).required()
-    .messages({
-      'string.uri': 'r2_url phải là URL hợp lệ (http/https)',
-      'any.required': 'r2_url là bắt buộc'
-    }),
-  text: Joi.string().trim().required()
-    .messages({
-      'string.empty': 'text không được để trống',
-      'any.required': 'text là bắt buộc'
-    }),
-  upload_url: Joi.string().uri({ scheme: ['http', 'https'] }).required()
-    .messages({
-      'string.uri': 'upload_url phải là URL hợp lệ (http/https)',
-      'any.required': 'upload_url là bắt buộc'
-    }),
-  api_key: Joi.string().trim().required()
-    .messages({
-      'string.empty': 'api_key không được để trống',
-      'any.required': 'api_key là bắt buộc'
-    }),
-}).options({ stripUnknown: true });
-
-/**
- * Express middleware to validate thumbnail request body
- */
-function validateThumbnailRequest(req, res, next) {
-  const { error, value } = thumbnailSchema.validate(req.body, { abortEarly: false });
-
-  if (error) {
-    const errors = error.details.map(d => ({
-      field: d.path.join('.'),
-      message: d.message,
-    }));
-    return res.status(422).json({
-      error: 'Validation failed',
-      details: errors,
-    });
-  }
-
-  // Replace body with validated + defaulted values
-  req.body = value;
+  // Normalize the public payload shape for the rendering pipeline.
+  req.body = {
+    ...value.config,
+    audioUrls,
+  };
   next();
 }
 
 module.exports = {
-  validateRecordRequest,
-  recordSchema,
-  validateThumbnailRequest,
-  thumbnailSchema,
+  validateFireflyVideoRecordRequest,
+  fireflyVideoConfigSchema,
+  fireflyVideoRecordSchema,
 };

@@ -2,7 +2,7 @@
  * Web2Media Service — Swagger/OpenAPI Configuration
  */
 
-const { DEFAULT_CONFIG, SERVER_CONFIG } = require('./config');
+const { DEFAULT_CONFIG } = require('./config');
 
 const swaggerDefinition = {
   openapi: '3.0.3',
@@ -10,20 +10,20 @@ const swaggerDefinition = {
     title: '🌟 Web2Media Service',
     version: '1.0.0',
     description: `
-Server-side API để tạo video animation đom đóm (firefly) và ảnh thumbnail tự động.
+Server-side API để tạo video animation đom đóm (firefly).
 
 ## Tính năng
-- 🖼️ **Tạo thumbnail** PNG chất lượng cao
 - 🎬 **Render video** với đầy đủ tham số cấu hình (đom đóm, nền, màu sắc, hướng bay...)
 - 🎨 **8 background presets** + hỗ trợ ảnh nền tùy chỉnh qua URL
 - 🌈 **6 color presets** + chọn màu hex tùy ý
+- 🎧 **Ghép audio từ URL** và tự lặp video đến hết audio
+- ☁️ **Upload video lên Cloudflare R2** sau khi render xong
 - 📦 **3 output formats**: WebM, MP4, GIF
 - 🖥️ **Tuỳ chỉnh resolution** từ 320×240 đến 3840×2160
 
 ## Cách sử dụng
-1. Gọi \`POST /api/generate-thumbnail\` để tạo ảnh thumbnail
-2. Gọi \`GET /api/presets\` để xem danh sách presets có sẵn
-3. Gọi \`POST /api/record\` để tạo video animation
+1. Gọi \`GET /api/presets\` để xem danh sách presets có sẵn
+2. Gọi \`POST /api/firefly-video-record\` để tạo video animation
     `,
     contact: {
       name: 'Web2Media Service',
@@ -40,7 +40,7 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
   ],
   tags: [
     {
-      name: 'Recording',
+      name: 'Firefly Video Record',
       description: 'Tạo video animation đom đóm',
     },
     {
@@ -48,104 +48,131 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
       description: 'Danh sách cấu hình có sẵn',
     },
     {
-      name: 'Thumbnail',
-      description: 'Tạo thumbnail PNG',
-    },
-    {
       name: 'System',
       description: 'Kiểm tra trạng thái hệ thống',
     },
   ],
   paths: {
-    '/api/record': {
+    '/api/firefly-video-record': {
       post: {
-        tags: ['Recording'],
+        tags: ['Firefly Video Record'],
         summary: 'Tạo video đom đóm',
-        description: `Render animation đom đóm với cấu hình tuỳ chỉnh và trả về file video.
+        description: `Render animation đom đóm với cấu hình tuỳ chỉnh, upload file video cuối cùng lên Cloudflare R2, và trả JSON metadata.
 
-⏱️ **Thời gian xử lý** phụ thuộc vào duration và resolution (VD: 10s video 1080p ≈ 15-25 giây).
+Thời gian xử lý phụ thuộc vào duration và resolution (VD: 10s video 1080p khoảng 15-25 giây).
 
-📌 Tất cả tham số đều có giá trị mặc định — bạn chỉ cần gửi những tham số muốn thay đổi.`,
-        operationId: 'recordVideo',
+Nếu gửi \`audioUrls\`, server sẽ tải audio theo thứ tự, nối chúng lại, và lặp video đom đóm cho đến khi audio kết thúc. GIF không hỗ trợ audio.
+
+Cấu hình R2 được đọc từ bảng \`runtime_configs\` trong Supabase. Không truyền cấu hình R2 trong request body.
+
+Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gửi những tham số muốn thay đổi.`,
+        operationId: 'fireflyVideoRecord',
         requestBody: {
           required: false,
           content: {
             'application/json': {
-              schema: { $ref: '#/components/schemas/RecordRequest' },
+              schema: { $ref: '#/components/schemas/FireflyVideoRecordRequest' },
               examples: {
                 minimal: {
                   summary: 'Tối giản — chỉ đổi thời lượng',
                   value: {
-                    duration: 5,
+                    config: {
+                      duration: 5,
+                    },
                   },
                 },
                 preset_color: {
                   summary: 'Đom đóm vàng, nền rừng',
                   value: {
-                    count: 120,
-                    size: 3,
-                    speed: 1.5,
-                    colorMode: 'preset',
-                    colorIndex: 1,
-                    glowLevel: 'high',
-                    bgIndex: 0,
-                    direction: 'up',
-                    duration: 10,
-                    format: 'webm',
+                    config: {
+                      count: 120,
+                      size: 3,
+                      speed: 1.5,
+                      colorMode: 'preset',
+                      colorIndex: 1,
+                      glowLevel: 'high',
+                      bgIndex: 0,
+                      direction: 'up',
+                      duration: 10,
+                      format: 'webm',
+                    },
                   },
                 },
                 custom_color: {
                   summary: 'Màu tuỳ chỉnh + MP4',
                   value: {
-                    count: 200,
-                    size: 2,
-                    speed: 0.8,
-                    colorMode: 'custom',
-                    customColor: '#ff6b9d',
-                    glowLevel: 'mid',
-                    direction: 'random',
-                    spread: 0.7,
-                    bgIndex: 7,
-                    duration: 15,
-                    width: 1280,
-                    height: 720,
-                    fps: 30,
-                    format: 'mp4',
-                    filename: 'pink-fireflies',
+                    config: {
+                      count: 200,
+                      size: 2,
+                      speed: 0.8,
+                      colorMode: 'custom',
+                      customColor: '#ff6b9d',
+                      glowLevel: 'mid',
+                      direction: 'random',
+                      spread: 0.7,
+                      bgIndex: 7,
+                      duration: 15,
+                      width: 1280,
+                      height: 720,
+                      fps: 30,
+                      format: 'mp4',
+                      filename: 'pink-fireflies',
+                    },
                   },
                 },
                 gif_output: {
                   summary: 'Export GIF nhẹ',
                   value: {
-                    count: 60,
-                    size: 3.5,
-                    glowLevel: 'high',
-                    colorIndex: 2,
-                    direction: 'up-right',
-                    bgIndex: 3,
-                    duration: 5,
-                    width: 640,
-                    height: 360,
-                    fps: 24,
-                    format: 'gif',
-                    filename: 'firefly-preview',
+                    config: {
+                      count: 60,
+                      size: 3.5,
+                      glowLevel: 'high',
+                      colorIndex: 2,
+                      direction: 'up-right',
+                      bgIndex: 3,
+                      duration: 5,
+                      width: 640,
+                      height: 360,
+                      fps: 24,
+                      format: 'gif',
+                      filename: 'firefly-preview',
+                    },
                   },
                 },
                 custom_background: {
                   summary: 'Ảnh nền tùy chỉnh (bgUrl)',
                   value: {
-                    count: 100,
-                    speed: 0.9,
-                    colorMode: 'preset',
-                    colorIndex: 4,
-                    bgUrl: 'https://img.freepik.com/free-photo/stars-universe-night-sky_1048-2434.jpg',
-                    direction: 'random',
-                    duration: 10,
-                    format: 'mp4',
-                    width: 1920,
-                    height: 1080,
-                    fps: 30,
-                    filename: 'stars-fireflies',
+                    config: {
+                      count: 100,
+                      speed: 0.9,
+                      colorMode: 'preset',
+                      colorIndex: 4,
+                      bgUrl: 'https://img.freepik.com/free-photo/stars-universe-night-sky_1048-2434.jpg',
+                      direction: 'random',
+                      duration: 10,
+                      format: 'mp4',
+                      width: 1920,
+                      height: 1080,
+                      fps: 30,
+                      filename: 'stars-fireflies',
+                    },
+                  },
+                },
+                with_audio: {
+                  summary: 'Ghép nhiều audio URL',
+                  value: {
+                    config: {
+                      duration: 10,
+                      format: 'mp4',
+                      width: 1280,
+                      height: 720,
+                      fps: 30,
+                      filename: 'firefly-with-audio',
+                    },
+                    audioUrls: [
+                      'https://example.com/audio/intro.mp3',
+                      'https://example.com/audio/main.mp3',
+                    ],
                   },
                 },
               },
@@ -154,27 +181,15 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
         },
         responses: {
           200: {
-            description: 'Video file được tạo thành công',
+            description: 'Video file được tạo và upload lên R2 thành công',
             content: {
-              'video/webm': {
-                schema: { type: 'string', format: 'binary' },
-              },
-              'video/mp4': {
-                schema: { type: 'string', format: 'binary' },
-              },
-              'image/gif': {
-                schema: { type: 'string', format: 'binary' },
-              },
-            },
-            headers: {
-              'Content-Disposition': {
-                description: 'Tên file download',
-                schema: { type: 'string', example: 'attachment; filename="firefly.webm"' },
+              'application/json': {
+                schema: { $ref: '#/components/schemas/R2UploadResponse' },
               },
             },
           },
           400: {
-            description: 'Tham số không hợp lệ',
+            description: 'Tham số không hợp lệ hoặc yêu cầu ghép audio với GIF',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' },
@@ -182,14 +197,14 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
                   success: false,
                   error: 'Tham số không hợp lệ',
                   details: [
-                    { field: 'count', message: 'Số lượng đom đóm phải <= 300' },
+                    { field: 'config.count', message: 'Số lượng đom đóm phải <= 300' },
                   ],
                 },
               },
             },
           },
           429: {
-            description: 'Quá nhiều recording đồng thời',
+            description: 'Quá nhiều firefly video record đồng thời',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' },
@@ -208,52 +223,16 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
               },
             },
           },
+          502: {
+            description: 'Không đọc được runtime_configs hoặc upload R2 thất bại',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
         },
       },
-    },
-    '/api/generate-thumbnail': {
-      post: {
-        tags: ['Thumbnail'],
-        summary: 'Tạo thumbnail PNG và upload',
-        description: `Downloads a girl image from URL, combines it with background and styled text, renders to PNG via Puppeteer, and uploads to an external service.`,
-        operationId: 'generateThumbnail',
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: { $ref: '#/components/schemas/ThumbnailRequest' },
-              examples: {
-                default: {
-                  summary: 'Mẫu request chuẩn',
-                  value: {
-                    r2_url: 'https://example.com/girl.jpg',
-                    text: 'Tôi đòi <green>nghỉ việc</green>',
-                    upload_url: 'https://api.example.com',
-                    api_key: 'my-api-key'
-                  }
-                }
-              }
-            }
-          }
-        },
-        responses: {
-          200: {
-            description: 'Upload API response'
-          },
-          400: {
-            description: 'Failed to download image'
-          },
-          422: {
-            description: 'Validation error'
-          },
-          500: {
-            description: 'Internal server error'
-          },
-          502: {
-            description: 'Upload API error'
-          }
-        }
-      }
     },
     '/api/presets': {
       get: {
@@ -277,7 +256,7 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
       get: {
         tags: ['System'],
         summary: 'Kiểm tra trạng thái server',
-        description: 'Trả về trạng thái server, version, và số recording đang chạy.',
+        description: 'Trả về trạng thái server, version, và số firefly video record đang chạy.',
         operationId: 'healthCheck',
         responses: {
           200: {
@@ -289,7 +268,7 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
                   success: true,
                   status: 'ok',
                   version: '1.0.0',
-                  activeRecordings: 0,
+                  activeFireflyVideoRecords: 0,
                   timestamp: '2026-06-06T09:00:00.000Z',
                 },
               },
@@ -301,7 +280,60 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
   },
   components: {
     schemas: {
-      RecordRequest: {
+      FireflyVideoRecordRequest: {
+        type: 'object',
+        description: 'Payload tạo video. Cấu hình firefly/video nằm trong config, audio URLs nằm riêng ở top-level.',
+        properties: {
+          config: {
+            $ref: '#/components/schemas/FireflyVideoConfig',
+          },
+          audioUrls: {
+            type: 'array',
+            maxItems: 20,
+            default: [],
+            description: '🎧 Danh sách URL audio http/https. Server sẽ nối audio theo thứ tự và lặp video cho đến khi audio kết thúc. Chỉ hỗ trợ với format webm hoặc mp4.',
+            items: {
+              type: 'string',
+              format: 'uri',
+            },
+            example: [
+              'https://example.com/audio/intro.mp3',
+              'https://example.com/audio/main.mp3',
+            ],
+          },
+        },
+      },
+      R2UploadResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          url: { type: 'string', example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
+          data: {
+            type: 'object',
+            properties: {
+              url: { type: 'string', example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
+              filename: { type: 'string', example: 'firefly-with-audio.mp4' },
+              format: { type: 'string', example: 'mp4' },
+              mimeType: { type: 'string', example: 'video/mp4' },
+              size: { type: 'integer', example: 1234567 },
+              duration: { type: 'integer', example: 10 },
+              hasAudio: { type: 'boolean', example: true },
+              r2: {
+                type: 'object',
+                properties: {
+                  bucket: { type: 'string', example: 'videos' },
+                  key: { type: 'string', example: 'firefly/firefly-with-audio.mp4' },
+                  size: { type: 'integer', example: 1234567 },
+                  contentType: { type: 'string', example: 'video/mp4' },
+                  etag: { type: 'string', example: '"abc123"' },
+                  url: { type: 'string', nullable: true, example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
+                },
+              },
+            },
+          },
+        },
+      },
+      FireflyVideoConfig: {
         type: 'object',
         description: 'Tham số cấu hình để tạo video. Tất cả đều có giá trị mặc định.',
         properties: {
@@ -386,7 +418,7 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
             description: '🖼 URL ảnh nền tuỳ chỉnh. Khi có giá trị sẽ override bgIndex',
             example: 'https://example.com/forest.jpg',
           },
-          // ── Recording ──
+          // ── Video Output ──
           duration: {
             type: 'integer',
             minimum: 3,
@@ -440,30 +472,6 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
             example: 'firefly',
           },
         },
-      },
-      ThumbnailRequest: {
-        type: 'object',
-        required: ['r2_url', 'text', 'upload_url', 'api_key'],
-        properties: {
-          r2_url: {
-            type: 'string',
-            format: 'uri',
-            description: 'Public URL to the girl image (R2, S3, or any HTTP URL)'
-          },
-          text: {
-            type: 'string',
-            description: 'Text with color tags, e.g.: Tôi đòi <green>nghỉ việc</green>'
-          },
-          upload_url: {
-            type: 'string',
-            format: 'uri',
-            description: 'Upload API base URL (e.g. https://your-domain)'
-          },
-          api_key: {
-            type: 'string',
-            description: 'API key for upload authentication'
-          }
-        }
       },
       PresetsResponse: {
         type: 'object',
@@ -523,7 +531,7 @@ Server-side API để tạo video animation đom đóm (firefly) và ảnh thumb
           success: { type: 'boolean', example: true },
           status: { type: 'string', example: 'ok' },
           version: { type: 'string', example: '1.0.0' },
-          activeRecordings: { type: 'integer', example: 0 },
+          activeFireflyVideoRecords: { type: 'integer', example: 0 },
           timestamp: { type: 'string', format: 'date-time' },
         },
       },

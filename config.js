@@ -47,7 +47,7 @@ const DEFAULT_CONFIG = {
   // Background
   bgIndex: 1,
   bgUrl: null,
-  // Recording
+  // Video output
   duration: 10,
   fps: 60,
   width: 1920,
@@ -64,14 +64,12 @@ const SERVER_CONFIG = {
   publicDir: path.join(__dirname, 'public'),
   maxConcurrent: parseInt(process.env.MAX_CONCURRENT) || 3,
   maxDuration: 120,  // seconds
-
-  // Thumbnail generation
-  thumbnailTemplateDir: path.join(__dirname, 'templates'),
-  backgroundPath: path.join(__dirname, 'public', 'background.png'),
-  downloadTimeout: parseInt(process.env.DOWNLOAD_TIMEOUT) || 30000,
-  uploadTimeout: parseInt(process.env.UPLOAD_TIMEOUT) || 60000,
-  fontLoadWait: parseInt(process.env.FONT_LOAD_WAIT) || 1000,
-  thumbnailViewport: { width: 1920, height: 1080 },
+  audioDownloadTimeout: parseInt(process.env.AUDIO_DOWNLOAD_TIMEOUT) || 30000,
+  maxAudioBytes: parseInt(process.env.MAX_AUDIO_BYTES) || 100 * 1024 * 1024,
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  runtimeConfigsTable: process.env.RUNTIME_CONFIGS_TABLE || 'runtime_configs',
+  runtimeConfigCacheTtlMs: parseInt(process.env.RUNTIME_CONFIG_CACHE_TTL_MS) || 60000,
 };
 
 module.exports = {

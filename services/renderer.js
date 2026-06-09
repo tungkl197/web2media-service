@@ -2,7 +2,7 @@
  * Web2Media Service — Puppeteer Rendering Service
  * 
  * Uses a singleton browser instance for performance.
- * Each recording request gets a new page (tab).
+ * Each firefly video record request gets a new page (tab).
  */
 
 const puppeteer = require('puppeteer');
@@ -12,7 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 const { SERVER_CONFIG } = require('../config');
 
 let browserInstance = null;
-let activeRecordings = 0;
+let activeFireflyVideoRecords = 0;
 
 /**
  * Download an image from URL and convert to base64 data URL (server-side).
@@ -98,7 +98,7 @@ async function getBrowser() {
 /**
  * Render a firefly animation video
  * 
- * @param {Object} params - Recording parameters
+ * @param {Object} params - Firefly video parameters
  * @param {number} params.count - Number of fireflies
  * @param {number} params.size - Firefly size
  * @param {number} params.speed - Firefly speed
@@ -117,13 +117,13 @@ async function getBrowser() {
  * @param {number} params.bitrate - Video bitrate in bps
  * @returns {Promise<string>} Path to the recorded .webm file
  */
-async function renderVideo(params) {
+async function renderFireflyVideo(params) {
   // Check concurrent limit
-  if (activeRecordings >= SERVER_CONFIG.maxConcurrent) {
+  if (activeFireflyVideoRecords >= SERVER_CONFIG.maxConcurrent) {
     throw new Error(`Đã đạt giới hạn ${SERVER_CONFIG.maxConcurrent} video đồng thời. Vui lòng thử lại sau.`);
   }
 
-  activeRecordings++;
+  activeFireflyVideoRecords++;
   let page = null;
 
   try {
@@ -215,62 +215,15 @@ async function renderVideo(params) {
     if (page) {
       try { await page.close(); } catch (e) { /* ignore */ }
     }
-    activeRecordings--;
+    activeFireflyVideoRecords--;
   }
 }
 
 /**
- * Render HTML content to a PNG buffer using Puppeteer.
- *
- * @param {string} htmlContent - Full HTML string to render
- * @returns {Promise<Buffer>} PNG image as a Buffer
+ * Get current active firefly video record count
  */
-async function renderThumbnail(htmlContent) {
-  let page = null;
-  try {
-    const browser = await getBrowser();
-    page = await browser.newPage();
-
-    await page.setViewport({
-      width: SERVER_CONFIG.thumbnailViewport.width,
-      height: SERVER_CONFIG.thumbnailViewport.height,
-      deviceScaleFactor: 1,
-    });
-
-    // Load HTML content directly
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-
-    // Extra wait to ensure font rendering is complete
-    await new Promise(r => setTimeout(r, SERVER_CONFIG.fontLoadWait));
-
-    // Screenshot only the #thumbnail element
-    const thumbnailElement = await page.$('#thumbnail');
-
-    let buffer;
-    if (thumbnailElement) {
-      buffer = await thumbnailElement.screenshot({ type: 'png' });
-    } else {
-      // Fallback: screenshot with clip
-      buffer = await page.screenshot({
-        type: 'png',
-        clip: { x: 0, y: 0, ...SERVER_CONFIG.thumbnailViewport },
-      });
-    }
-
-    // Puppeteer returns a Uint8Array (Buffer in Node.js)
-    return buffer;
-  } finally {
-    if (page) {
-      try { await page.close(); } catch (e) { /* ignore */ }
-    }
-  }
-}
-
-/**
- * Get current active recording count
- */
-function getActiveCount() {
-  return activeRecordings;
+function getActiveFireflyVideoRecordCount() {
+  return activeFireflyVideoRecords;
 }
 
 /**
@@ -284,8 +237,7 @@ async function closeBrowser() {
 }
 
 module.exports = {
-  renderVideo,
-  renderThumbnail,
-  getActiveCount,
+  renderFireflyVideo,
+  getActiveFireflyVideoRecordCount,
   closeBrowser,
 };

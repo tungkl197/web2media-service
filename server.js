@@ -13,7 +13,7 @@ const fs = require('fs');
 const swaggerUi = require('swagger-ui-express');
 
 const { SERVER_CONFIG } = require('./config');
-const recordRoutes = require('./routes/record');
+const fireflyVideoRecordRoutes = require('./routes/fireflyVideoRecord');
 const { closeBrowser } = require('./services/renderer');
 const swaggerDocument = require('./swagger');
 
@@ -61,19 +61,17 @@ const swaggerOptions = {
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerOptions));
 
 // ── API Routes ──
-app.use('/api', recordRoutes);
-app.use('/api', require('./routes/thumbnail'));
+app.use('/api', fireflyVideoRecordRoutes);
 
 // ── Root endpoint ──
 app.get('/', (req, res) => {
   res.json({
     name: 'Web2Media Service',
     version: '1.0.0',
-    description: 'Server-side API để tạo video animation và thumbnail',
+    description: 'Server-side API để tạo video animation',
     documentation: `http://localhost:${SERVER_CONFIG.port}/docs`,
     endpoints: {
-      'POST /api/record': 'Tạo video với cấu hình tùy chỉnh',
-      'POST /api/generate-thumbnail': 'Tạo thumbnail PNG và upload',
+      'POST /api/firefly-video-record': 'Tạo video đom đóm với cấu hình tùy chỉnh',
       'GET /api/presets': 'Danh sách preset có sẵn',
       'GET /api/health': 'Kiểm tra trạng thái server',
       'GET /docs': 'Swagger UI — Interactive API documentation',
@@ -122,8 +120,7 @@ const server = app.listen(SERVER_CONFIG.port, () => {
   console.log('  ✦ ═══════════════════════════════════════ ✦');
   console.log('');
   console.log('  Endpoints:');
-  console.log('    POST /api/record             → Tạo video');
-  console.log('    POST /api/generate-thumbnail → Tạo thumbnail');
+  console.log('    POST /api/firefly-video-record → Tạo video đom đóm');
   console.log('    GET  /api/presets            → Danh sách presets');
   console.log('    GET  /api/health             → Health check');
   console.log(`    GET  /docs                   → Swagger UI`);
