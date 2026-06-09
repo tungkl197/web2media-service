@@ -14,6 +14,41 @@ const { SERVER_CONFIG } = require('../config');
 let browserInstance = null;
 let activeFireflyVideoRecords = 0;
 
+function getBrowserGpuArgs(enabled) {
+  if (!enabled) {
+    return ['--disable-gpu'];
+  }
+
+  const args = [
+    '--ignore-gpu-blocklist',
+    '--enable-gpu-rasterization',
+    '--enable-zero-copy',
+  ];
+
+  if (process.platform === 'win32') {
+    args.push('--use-angle=d3d11');
+  } else if (process.platform === 'linux') {
+    args.push('--use-gl=egl');
+    args.push('--enable-features=VaapiVideoDecoder,VaapiVideoEncoder');
+  }
+
+  return args;
+}
+
+function buildBrowserLaunchArgs(gpuEnabled = SERVER_CONFIG.browserGpuEnabled) {
+  return [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    ...getBrowserGpuArgs(gpuEnabled),
+    '--no-first-run',
+    '--no-zygote',
+    '--disable-extensions',
+    '--autoplay-policy=no-user-gesture-required',
+    ...SERVER_CONFIG.browserGpuExtraArgs,
+  ];
+}
+
 /**
  * Download an image from URL and convert to base64 data URL (server-side).
  * Handles redirects, timeouts, and sends a browser-like User-Agent.
@@ -73,19 +108,24 @@ function downloadImageAsDataUrl(url, maxRedirects = 5) {
  */
 async function getBrowser() {
   if (!browserInstance || !browserInstance.connected) {
-    browserInstance = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-extensions',
-        '--autoplay-policy=no-user-gesture-required',
-      ],
-    });
+    try {
+      browserInstance = await puppeteer.launch({
+        headless: 'new',
+        args: buildBrowserLaunchArgs(),
+      });
+      console.log(`[Renderer] Browser GPU acceleration: ${SERVER_CONFIG.browserGpuEnabled ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+      if (!SERVER_CONFIG.browserGpuEnabled || !SERVER_CONFIG.browserGpuFallback) {
+        throw err;
+      }
+
+      console.warn(`[Renderer] Browser GPU launch failed (${err.message}). Retrying with GPU disabled.`);
+      browserInstance = await puppeteer.launch({
+        headless: 'new',
+        args: buildBrowserLaunchArgs(false),
+      });
+      console.log('[Renderer] Browser GPU acceleration: disabled after fallback');
+    }
 
     // Handle unexpected browser close
     browserInstance.on('disconnected', () => {

@@ -1,72 +1,99 @@
 /**
- * Web2Media Service — Swagger/OpenAPI Configuration
+ * Web2Media Service - Swagger/OpenAPI Configuration
  */
 
 const { DEFAULT_CONFIG } = require('./config');
 
+const fireflyJobStatusResponse = {
+  description: 'Firefly video job status. When status is done, `url` is the R2 URL.',
+  content: {
+    'application/json': {
+      schema: { $ref: '#/components/schemas/FireflyVideoJobStatusResponse' },
+      examples: {
+        running: {
+          summary: 'Job is still running',
+          value: {
+            success: true,
+            jobId: '2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0',
+            status: 'running',
+            progress: {
+              step: 'uploading',
+              message: 'Uploading video to R2',
+              percent: 85,
+            },
+          },
+        },
+        done: {
+          summary: 'Job is done',
+          value: {
+            success: true,
+            jobId: '2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0',
+            status: 'done',
+            url: 'https://cdn.example.com/firefly/firefly-with-audio.mp4',
+            data: {
+              url: 'https://cdn.example.com/firefly/firefly-with-audio.mp4',
+              filename: 'firefly-with-audio.mp4',
+              format: 'mp4',
+              mimeType: 'video/mp4',
+              size: 1234567,
+              duration: 10,
+              hasAudio: true,
+              elapsedSeconds: 42.1,
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 const swaggerDefinition = {
   openapi: '3.0.3',
   info: {
-    title: '🌟 Web2Media Service',
+    title: 'Web2Media Service',
     version: '1.0.0',
     description: `
-Server-side API để tạo video animation đom đóm (firefly).
+Server-side API to create firefly animation videos.
 
-## Tính năng
-- 🎬 **Render video** với đầy đủ tham số cấu hình (đom đóm, nền, màu sắc, hướng bay...)
-- 🎨 **8 background presets** + hỗ trợ ảnh nền tùy chỉnh qua URL
-- 🌈 **6 color presets** + chọn màu hex tùy ý
-- 🎧 **Ghép audio từ URL** và tự lặp video đến hết audio
-- ☁️ **Upload video lên Cloudflare R2** sau khi render xong
-- 📦 **3 output formats**: WebM, MP4, GIF
-- 🖥️ **Tuỳ chỉnh resolution** từ 320×240 đến 3840×2160
+The firefly video API is asynchronous:
+1. Call POST /api/firefly-video-record to create a job.
+2. Poll GET /api/firefly-video-record/status/{jobId}.
+3. When status is "done", the response includes the R2 URL in top-level "url".
 
-## Cách sử dụng
-1. Gọi \`GET /api/presets\` để xem danh sách presets có sẵn
-2. Gọi \`POST /api/firefly-video-record\` để tạo video animation
+R2 configuration is read from Supabase runtime_configs. Do not send R2 config in the request body.
     `,
-    contact: {
-      name: 'Web2Media Service',
-    },
-    license: {
-      name: 'MIT',
-    },
   },
   servers: [
     {
-      url: `/`,
+      url: '/',
       description: 'Web2Media Service',
     },
   ],
   tags: [
     {
       name: 'Firefly Video Record',
-      description: 'Tạo video animation đom đóm',
+      description: 'Create firefly animation videos',
     },
     {
       name: 'Presets',
-      description: 'Danh sách cấu hình có sẵn',
+      description: 'Available video presets',
     },
     {
       name: 'System',
-      description: 'Kiểm tra trạng thái hệ thống',
+      description: 'Service status',
     },
   ],
   paths: {
     '/api/firefly-video-record': {
       post: {
         tags: ['Firefly Video Record'],
-        summary: 'Tạo video đom đóm',
-        description: `Render animation đom đóm với cấu hình tuỳ chỉnh, upload file video cuối cùng lên Cloudflare R2, và trả JSON metadata.
+        summary: 'Create an async firefly video job',
+        description: `Creates a queued job and returns immediately with jobId.
 
-Thời gian xử lý phụ thuộc vào duration và resolution (VD: 10s video 1080p khoảng 15-25 giây).
+The render, optional audio merge, and R2 upload run in the background. Use the status API to get the final R2 URL.
 
-Nếu gửi \`audioUrls\`, server sẽ tải audio theo thứ tự, nối chúng lại, và lặp video đom đóm cho đến khi audio kết thúc. GIF không hỗ trợ audio.
-
-Cấu hình R2 được đọc từ bảng \`runtime_configs\` trong Supabase. Không truyền cấu hình R2 trong request body.
-
-Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gửi những tham số muốn thay đổi.`,
-        operationId: 'fireflyVideoRecord',
+If audioUrls is provided, the server downloads the audio files in order, concatenates them, and loops the video until the audio ends. GIF does not support audio.`,
+        operationId: 'createFireflyVideoRecordJob',
         requestBody: {
           required: false,
           content: {
@@ -74,92 +101,15 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
               schema: { $ref: '#/components/schemas/FireflyVideoRecordRequest' },
               examples: {
                 minimal: {
-                  summary: 'Tối giản — chỉ đổi thời lượng',
+                  summary: 'Minimal request',
                   value: {
                     config: {
                       duration: 5,
-                    },
-                  },
-                },
-                preset_color: {
-                  summary: 'Đom đóm vàng, nền rừng',
-                  value: {
-                    config: {
-                      count: 120,
-                      size: 3,
-                      speed: 1.5,
-                      colorMode: 'preset',
-                      colorIndex: 1,
-                      glowLevel: 'high',
-                      bgIndex: 0,
-                      direction: 'up',
-                      duration: 10,
-                      format: 'webm',
-                    },
-                  },
-                },
-                custom_color: {
-                  summary: 'Màu tuỳ chỉnh + MP4',
-                  value: {
-                    config: {
-                      count: 200,
-                      size: 2,
-                      speed: 0.8,
-                      colorMode: 'custom',
-                      customColor: '#ff6b9d',
-                      glowLevel: 'mid',
-                      direction: 'random',
-                      spread: 0.7,
-                      bgIndex: 7,
-                      duration: 15,
-                      width: 1280,
-                      height: 720,
-                      fps: 30,
-                      format: 'mp4',
-                      filename: 'pink-fireflies',
-                    },
-                  },
-                },
-                gif_output: {
-                  summary: 'Export GIF nhẹ',
-                  value: {
-                    config: {
-                      count: 60,
-                      size: 3.5,
-                      glowLevel: 'high',
-                      colorIndex: 2,
-                      direction: 'up-right',
-                      bgIndex: 3,
-                      duration: 5,
-                      width: 640,
-                      height: 360,
-                      fps: 24,
-                      format: 'gif',
-                      filename: 'firefly-preview',
-                    },
-                  },
-                },
-                custom_background: {
-                  summary: 'Ảnh nền tùy chỉnh (bgUrl)',
-                  value: {
-                    config: {
-                      count: 100,
-                      speed: 0.9,
-                      colorMode: 'preset',
-                      colorIndex: 4,
-                      bgUrl: 'https://img.freepik.com/free-photo/stars-universe-night-sky_1048-2434.jpg',
-                      direction: 'random',
-                      duration: 10,
-                      format: 'mp4',
-                      width: 1920,
-                      height: 1080,
-                      fps: 30,
-                      filename: 'stars-fireflies',
                     },
                   },
                 },
                 with_audio: {
-                  summary: 'Ghép nhiều audio URL',
+                  summary: 'Video with multiple audio URLs',
                   value: {
                     config: {
                       duration: 10,
@@ -180,51 +130,74 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
           },
         },
         responses: {
-          200: {
-            description: 'Video file được tạo và upload lên R2 thành công',
+          202: {
+            description: 'Job accepted and queued',
             content: {
               'application/json': {
-                schema: { $ref: '#/components/schemas/R2UploadResponse' },
+                schema: { $ref: '#/components/schemas/FireflyVideoJobCreateResponse' },
+                example: {
+                  success: true,
+                  jobId: '2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0',
+                  status: 'queued',
+                  statusUrl: '/api/firefly-video-record/status/2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0',
+                },
               },
             },
           },
           400: {
-            description: 'Tham số không hợp lệ hoặc yêu cầu ghép audio với GIF',
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/ErrorResponse' },
-                example: {
-                  success: false,
-                  error: 'Tham số không hợp lệ',
-                  details: [
-                    { field: 'config.count', message: 'Số lượng đom đóm phải <= 300' },
-                  ],
-                },
-              },
-            },
-          },
-          429: {
-            description: 'Quá nhiều firefly video record đồng thời',
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/ErrorResponse' },
-                example: {
-                  success: false,
-                  error: 'Đã đạt giới hạn 3 video đồng thời. Vui lòng thử lại sau.',
-                },
-              },
-            },
-          },
-          500: {
-            description: 'Lỗi server',
+            description: 'Invalid request parameters',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' },
               },
             },
           },
-          502: {
-            description: 'Không đọc được runtime_configs hoặc upload R2 thất bại',
+        },
+      },
+    },
+    '/api/firefly-video-record/status/{jobId}': {
+      get: {
+        tags: ['Firefly Video Record'],
+        summary: 'Check firefly video job status',
+        operationId: 'getFireflyVideoRecordJobStatus',
+        parameters: [
+          {
+            name: 'jobId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          200: fireflyJobStatusResponse,
+          404: {
+            description: 'Job not found',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/firefly-video-record/{jobId}': {
+      get: {
+        tags: ['Firefly Video Record'],
+        summary: 'Check firefly video job status (short alias)',
+        operationId: 'getFireflyVideoRecordJobStatusAlias',
+        parameters: [
+          {
+            name: 'jobId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          200: fireflyJobStatusResponse,
+          404: {
+            description: 'Job not found',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ErrorResponse' },
@@ -237,12 +210,11 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
     '/api/presets': {
       get: {
         tags: ['Presets'],
-        summary: 'Danh sách presets có sẵn',
-        description: 'Trả về danh sách tất cả background, color presets, hướng bay, và các tuỳ chọn khác.',
+        summary: 'Get available presets',
         operationId: 'getPresets',
         responses: {
           200: {
-            description: 'Danh sách presets',
+            description: 'Preset list',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/PresetsResponse' },
@@ -255,22 +227,14 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
     '/api/health': {
       get: {
         tags: ['System'],
-        summary: 'Kiểm tra trạng thái server',
-        description: 'Trả về trạng thái server, version, và số firefly video record đang chạy.',
+        summary: 'Health check',
         operationId: 'healthCheck',
         responses: {
           200: {
-            description: 'Server hoạt động bình thường',
+            description: 'Server is healthy',
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/HealthResponse' },
-                example: {
-                  success: true,
-                  status: 'ok',
-                  version: '1.0.0',
-                  activeFireflyVideoRecords: 0,
-                  timestamp: '2026-06-06T09:00:00.000Z',
-                },
               },
             },
           },
@@ -282,7 +246,6 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
     schemas: {
       FireflyVideoRecordRequest: {
         type: 'object',
-        description: 'Payload tạo video. Cấu hình firefly/video nằm trong config, audio URLs nằm riêng ở top-level.',
         properties: {
           config: {
             $ref: '#/components/schemas/FireflyVideoConfig',
@@ -291,186 +254,127 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
             type: 'array',
             maxItems: 20,
             default: [],
-            description: '🎧 Danh sách URL audio http/https. Server sẽ nối audio theo thứ tự và lặp video cho đến khi audio kết thúc. Chỉ hỗ trợ với format webm hoặc mp4.',
+            description: 'Audio URLs. The server concatenates them in order and loops video until audio ends.',
             items: {
               type: 'string',
               format: 'uri',
             },
-            example: [
-              'https://example.com/audio/intro.mp3',
-              'https://example.com/audio/main.mp3',
-            ],
           },
-        },
-      },
-      R2UploadResponse: {
-        type: 'object',
-        properties: {
-          success: { type: 'boolean', example: true },
-          url: { type: 'string', example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
-          data: {
-            type: 'object',
-            properties: {
-              url: { type: 'string', example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
-              filename: { type: 'string', example: 'firefly-with-audio.mp4' },
-              format: { type: 'string', example: 'mp4' },
-              mimeType: { type: 'string', example: 'video/mp4' },
-              size: { type: 'integer', example: 1234567 },
-              duration: { type: 'integer', example: 10 },
-              hasAudio: { type: 'boolean', example: true },
-              r2: {
-                type: 'object',
-                properties: {
-                  bucket: { type: 'string', example: 'videos' },
-                  key: { type: 'string', example: 'firefly/firefly-with-audio.mp4' },
-                  size: { type: 'integer', example: 1234567 },
-                  contentType: { type: 'string', example: 'video/mp4' },
-                  etag: { type: 'string', example: '"abc123"' },
-                  url: { type: 'string', nullable: true, example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
-                },
-              },
+          audio_urls: {
+            type: 'array',
+            maxItems: 20,
+            default: [],
+            description: 'Alias for audioUrls.',
+            items: {
+              type: 'string',
+              format: 'uri',
             },
           },
         },
       },
       FireflyVideoConfig: {
         type: 'object',
-        description: 'Tham số cấu hình để tạo video. Tất cả đều có giá trị mặc định.',
         properties: {
-          // ── Firefly Config ──
-          count: {
-            type: 'integer',
-            minimum: 10,
-            maximum: 300,
-            default: DEFAULT_CONFIG.count,
-            description: '✦ Số lượng đom đóm',
-            example: 80,
-          },
-          size: {
-            type: 'number',
-            minimum: 1,
-            maximum: 6,
-            default: DEFAULT_CONFIG.size,
-            description: '⬤ Kích thước đom đóm',
-            example: 2.5,
-          },
-          speed: {
-            type: 'number',
-            minimum: 0.2,
-            maximum: 3.0,
-            default: DEFAULT_CONFIG.speed,
-            description: '⚡ Tốc độ bay',
-            example: 1.0,
-          },
-          colorMode: {
-            type: 'string',
-            enum: ['preset', 'custom'],
-            default: DEFAULT_CONFIG.colorMode,
-            description: '🎨 Chế độ màu — `preset` dùng colorIndex, `custom` dùng customColor',
-          },
-          colorIndex: {
-            type: 'integer',
-            minimum: 0,
-            maximum: 5,
-            default: DEFAULT_CONFIG.colorIndex,
-            description: '🎨 Index preset màu (0=Xanh lá, 1=Vàng, 2=Xanh lam, 3=Cam, 4=Trắng, 5=Hồng). Chỉ dùng khi colorMode="preset"',
-          },
-          customColor: {
-            type: 'string',
-            pattern: '^#[0-9a-fA-F]{6}$',
-            default: DEFAULT_CONFIG.customColor,
-            description: '🎨 Mã màu hex tuỳ chỉnh. Chỉ dùng khi colorMode="custom"',
-            example: '#7fff9a',
-          },
-          glowLevel: {
-            type: 'string',
-            enum: ['low', 'mid', 'high'],
-            default: DEFAULT_CONFIG.glowLevel,
-            description: '💫 Cường độ phát sáng (low=nhẹ, mid=vừa, high=mạnh)',
-          },
+          count: { type: 'integer', minimum: 10, maximum: 300, default: DEFAULT_CONFIG.count, example: 80 },
+          size: { type: 'number', minimum: 1, maximum: 6, default: DEFAULT_CONFIG.size, example: 2.5 },
+          speed: { type: 'number', minimum: 0.2, maximum: 3, default: DEFAULT_CONFIG.speed, example: 1 },
+          colorMode: { type: 'string', enum: ['preset', 'custom'], default: DEFAULT_CONFIG.colorMode },
+          colorIndex: { type: 'integer', minimum: 0, maximum: 5, default: DEFAULT_CONFIG.colorIndex },
+          customColor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', default: DEFAULT_CONFIG.customColor },
+          glowLevel: { type: 'string', enum: ['low', 'mid', 'high'], default: DEFAULT_CONFIG.glowLevel },
           direction: {
             type: 'string',
             enum: ['up', 'down', 'left', 'right', 'up-left', 'up-right', 'down-left', 'down-right', 'random'],
             default: DEFAULT_CONFIG.direction,
-            description: '🧭 Hướng bay của đom đóm',
           },
-          spread: {
-            type: 'number',
-            minimum: 0,
-            maximum: 1,
-            default: DEFAULT_CONFIG.spread,
-            description: '〰 Độ tản mạn — 0 = bay thẳng, 1 = bay tản rộng',
-            example: 0.4,
+          spread: { type: 'number', minimum: 0, maximum: 1, default: DEFAULT_CONFIG.spread },
+          bgIndex: { type: 'integer', minimum: 0, maximum: 7, default: DEFAULT_CONFIG.bgIndex },
+          bgUrl: { type: 'string', format: 'uri', nullable: true, default: null },
+          duration: { type: 'integer', minimum: 3, maximum: 120, default: DEFAULT_CONFIG.duration },
+          fps: { type: 'integer', enum: [24, 30, 60], default: DEFAULT_CONFIG.fps },
+          width: { type: 'integer', minimum: 320, maximum: 3840, default: DEFAULT_CONFIG.width },
+          height: { type: 'integer', minimum: 240, maximum: 2160, default: DEFAULT_CONFIG.height },
+          bitrate: { type: 'integer', minimum: 1000000, maximum: 20000000, default: DEFAULT_CONFIG.bitrate },
+          format: { type: 'string', enum: ['webm', 'mp4', 'gif'], default: DEFAULT_CONFIG.format },
+          filename: { type: 'string', pattern: '^[a-zA-Z0-9_-]+$', maxLength: 100, default: DEFAULT_CONFIG.filename },
+        },
+      },
+      FireflyVideoJobCreateResponse: {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean', example: true },
+          jobId: { type: 'string', example: '2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0' },
+          status: { type: 'string', enum: ['queued', 'running', 'done', 'failed'], example: 'queued' },
+          statusUrl: { type: 'string', example: '/api/firefly-video-record/status/2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0' },
+          data: { $ref: '#/components/schemas/FireflyVideoJobStatus' },
+        },
+      },
+      FireflyVideoJobStatusResponse: {
+        allOf: [
+          {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+            },
           },
-          // ── Background ──
-          bgIndex: {
-            type: 'integer',
-            minimum: 0,
-            maximum: 7,
-            default: DEFAULT_CONFIG.bgIndex,
-            description: '🖼 Index preset nền (0=Rừng, 1=Đêm, 2=Hoàng hôn, 3=Ao hồ, 4=Núi, 5=Lúa, 6=Biển, 7=Tím)',
-          },
-          bgUrl: {
+          { $ref: '#/components/schemas/FireflyVideoJobStatus' },
+        ],
+      },
+      FireflyVideoJobStatus: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string' },
+          status: { type: 'string', enum: ['queued', 'running', 'done', 'failed'] },
+          createdAt: { type: 'string', format: 'date-time', nullable: true },
+          updatedAt: { type: 'string', format: 'date-time', nullable: true },
+          startedAt: { type: 'string', format: 'date-time', nullable: true },
+          completedAt: { type: 'string', format: 'date-time', nullable: true },
+          progress: { $ref: '#/components/schemas/JobProgress' },
+          url: {
             type: 'string',
-            format: 'uri',
             nullable: true,
-            default: null,
-            description: '🖼 URL ảnh nền tuỳ chỉnh. Khi có giá trị sẽ override bgIndex',
-            example: 'https://example.com/forest.jpg',
+            description: 'R2 URL. Present when status is done.',
           },
-          // ── Video Output ──
-          duration: {
-            type: 'integer',
-            minimum: 3,
-            maximum: 120,
-            default: DEFAULT_CONFIG.duration,
-            description: '⏱ Thời lượng video (giây)',
-            example: 10,
+          data: {
+            $ref: '#/components/schemas/FireflyVideoResult',
           },
-          fps: {
-            type: 'integer',
-            enum: [24, 30, 60],
-            default: DEFAULT_CONFIG.fps,
-            description: '🎞 Số frame trên giây',
-          },
-          width: {
-            type: 'integer',
-            minimum: 320,
-            maximum: 3840,
-            default: DEFAULT_CONFIG.width,
-            description: '🖥 Chiều rộng video (px)',
-            example: 1920,
-          },
-          height: {
-            type: 'integer',
-            minimum: 240,
-            maximum: 2160,
-            default: DEFAULT_CONFIG.height,
-            description: '🖥 Chiều cao video (px)',
-            example: 1080,
-          },
-          bitrate: {
-            type: 'integer',
-            minimum: 1000000,
-            maximum: 20000000,
-            default: DEFAULT_CONFIG.bitrate,
-            description: '📊 Bitrate video (bps). 2500000=720p, 5000000=1080p, 10000000=4K',
-            example: 5000000,
-          },
-          format: {
+          error: {
             type: 'string',
-            enum: ['webm', 'mp4', 'gif'],
-            default: DEFAULT_CONFIG.format,
-            description: '📦 Định dạng output video',
+            nullable: true,
           },
-          filename: {
-            type: 'string',
-            pattern: '^[a-zA-Z0-9_-]+$',
-            maxLength: 100,
-            default: DEFAULT_CONFIG.filename,
-            description: '📁 Tên file download (không cần extension)',
-            example: 'firefly',
-          },
+        },
+      },
+      JobProgress: {
+        type: 'object',
+        properties: {
+          step: { type: 'string', example: 'uploading' },
+          message: { type: 'string', example: 'Uploading video to R2' },
+          percent: { type: 'number', example: 85 },
+        },
+      },
+      FireflyVideoResult: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
+          filename: { type: 'string', example: 'firefly-with-audio.mp4' },
+          format: { type: 'string', example: 'mp4' },
+          mimeType: { type: 'string', example: 'video/mp4' },
+          size: { type: 'integer', example: 1234567 },
+          duration: { type: 'integer', example: 10 },
+          hasAudio: { type: 'boolean', example: true },
+          elapsedSeconds: { type: 'number', example: 42.1 },
+          r2: { $ref: '#/components/schemas/R2UploadResult' },
+        },
+      },
+      R2UploadResult: {
+        type: 'object',
+        properties: {
+          bucket: { type: 'string', example: 'videos' },
+          key: { type: 'string', example: 'firefly/firefly-with-audio.mp4' },
+          size: { type: 'integer', example: 1234567 },
+          contentType: { type: 'string', example: 'video/mp4' },
+          etag: { type: 'string', example: '"abc123"' },
+          url: { type: 'string', nullable: true, example: 'https://cdn.example.com/firefly/firefly-with-audio.mp4' },
         },
       },
       PresetsResponse: {
@@ -480,47 +384,12 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
           data: {
             type: 'object',
             properties: {
-              backgrounds: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    index: { type: 'integer', example: 0 },
-                    label: { type: 'string', example: 'Rừng' },
-                  },
-                },
-              },
-              colors: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    index: { type: 'integer', example: 0 },
-                    name: { type: 'string', example: 'Xanh lá' },
-                    hex: { type: 'string', example: '#5fdf47' },
-                  },
-                },
-              },
-              directions: {
-                type: 'array',
-                items: { type: 'string' },
-                example: ['up', 'down', 'left', 'right', 'up-left', 'up-right', 'down-left', 'down-right', 'random'],
-              },
-              glowLevels: {
-                type: 'array',
-                items: { type: 'string' },
-                example: ['low', 'mid', 'high'],
-              },
-              fpsOptions: {
-                type: 'array',
-                items: { type: 'integer' },
-                example: [24, 30, 60],
-              },
-              formatOptions: {
-                type: 'array',
-                items: { type: 'string' },
-                example: ['webm', 'mp4', 'gif'],
-              },
+              backgrounds: { type: 'array', items: { type: 'object' } },
+              colors: { type: 'array', items: { type: 'object' } },
+              directions: { type: 'array', items: { type: 'string' } },
+              glowLevels: { type: 'array', items: { type: 'string' } },
+              fpsOptions: { type: 'array', items: { type: 'integer' } },
+              formatOptions: { type: 'array', items: { type: 'string' } },
             },
           },
         },
@@ -532,6 +401,15 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
           status: { type: 'string', example: 'ok' },
           version: { type: 'string', example: '1.0.0' },
           activeFireflyVideoRecords: { type: 'integer', example: 0 },
+          fireflyVideoJobs: {
+            type: 'object',
+            properties: {
+              queued: { type: 'integer', example: 0 },
+              running: { type: 'integer', example: 1 },
+              total: { type: 'integer', example: 4 },
+              concurrency: { type: 'integer', example: 3 },
+            },
+          },
           timestamp: { type: 'string', format: 'date-time' },
         },
       },
@@ -539,15 +417,16 @@ Tất cả tham số đều có giá trị mặc định, bạn chỉ cần gử
         type: 'object',
         properties: {
           success: { type: 'boolean', example: false },
-          error: { type: 'string', example: 'Tham số không hợp lệ' },
+          error: { type: 'string', example: 'Invalid request' },
+          jobId: { type: 'string', nullable: true },
           details: {
             type: 'array',
             nullable: true,
             items: {
               type: 'object',
               properties: {
-                field: { type: 'string', example: 'count' },
-                message: { type: 'string', example: 'Số lượng đom đóm phải <= 300' },
+                field: { type: 'string', example: 'config.count' },
+                message: { type: 'string', example: 'count must be less than or equal to 300' },
               },
             },
           },

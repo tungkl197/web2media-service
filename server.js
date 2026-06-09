@@ -71,7 +71,8 @@ app.get('/', (req, res) => {
     description: 'Server-side API để tạo video animation',
     documentation: `http://localhost:${SERVER_CONFIG.port}/docs`,
     endpoints: {
-      'POST /api/firefly-video-record': 'Tạo video đom đóm với cấu hình tùy chỉnh',
+      'POST /api/firefly-video-record': 'Tao job video firefly va tra ve jobId',
+      'GET /api/firefly-video-record/status/:jobId': 'Kiem tra status job, status done se co R2 URL',
       'GET /api/presets': 'Danh sách preset có sẵn',
       'GET /api/health': 'Kiểm tra trạng thái server',
       'GET /docs': 'Swagger UI — Interactive API documentation',
@@ -120,7 +121,8 @@ const server = app.listen(SERVER_CONFIG.port, () => {
   console.log('  ✦ ═══════════════════════════════════════ ✦');
   console.log('');
   console.log('  Endpoints:');
-  console.log('    POST /api/firefly-video-record → Tạo video đom đóm');
+  console.log('    POST /api/firefly-video-record           -> Tao job video firefly');
+  console.log('    GET  /api/firefly-video-record/status/:id -> Kiem tra job status');
   console.log('    GET  /api/presets            → Danh sách presets');
   console.log('    GET  /api/health             → Health check');
   console.log(`    GET  /docs                   → Swagger UI`);

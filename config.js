@@ -4,6 +4,25 @@
 
 const path = require('path');
 
+function parseBooleanEnv(value, defaultValue) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  return !['0', 'false', 'off', 'no', 'disabled'].includes(String(value).toLowerCase());
+}
+
+function parseListEnv(value) {
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
 // ── Background presets (mirrored from firefly.html) ──
 const BG_PRESETS = [
   { index: 0, label: 'Rừng', gradient: 'radial-gradient(ellipse at 30% 60%, #0d2b14 0%, #050e08 60%, #020608 100%)' },
@@ -70,6 +89,17 @@ const SERVER_CONFIG = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   runtimeConfigsTable: process.env.RUNTIME_CONFIGS_TABLE || 'runtime_configs',
   runtimeConfigCacheTtlMs: parseInt(process.env.RUNTIME_CONFIG_CACHE_TTL_MS) || 60000,
+  r2UploadPartSize: parseInt(process.env.R2_UPLOAD_PART_SIZE) || 16 * 1024 * 1024,
+  r2UploadQueueSize: parseInt(process.env.R2_UPLOAD_QUEUE_SIZE) || 3,
+  jobQueueConcurrency: parseInt(process.env.JOB_QUEUE_CONCURRENCY) || parseInt(process.env.MAX_CONCURRENT) || 3,
+  jobRetentionMs: parseInt(process.env.JOB_RETENTION_MS) || 24 * 60 * 60 * 1000,
+  browserGpuEnabled: parseBooleanEnv(process.env.BROWSER_GPU_ENABLED, true),
+  browserGpuFallback: parseBooleanEnv(process.env.BROWSER_GPU_FALLBACK, true),
+  browserGpuExtraArgs: parseListEnv(process.env.BROWSER_GPU_EXTRA_ARGS),
+  ffmpegPath: process.env.FFMPEG_PATH || '',
+  ffmpegVideoEncoder: process.env.FFMPEG_VIDEO_ENCODER || 'auto',
+  ffmpegHwAccel: process.env.FFMPEG_HWACCEL || 'auto',
+  ffmpegHardwareFallback: parseBooleanEnv(process.env.FFMPEG_HARDWARE_FALLBACK, true),
 };
 
 module.exports = {

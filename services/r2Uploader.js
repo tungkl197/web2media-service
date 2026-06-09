@@ -4,7 +4,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client } = require('@aws-sdk/client-s3');
+const { Upload } = require('@aws-sdk/lib-storage');
+const { SERVER_CONFIG } = require('../config');
 
 function normalizeEndpoint(r2Config) {
   if (r2Config.endpoint) {
@@ -70,13 +72,33 @@ async function uploadFileToR2(filePath, r2Config, options = {}) {
 
   console.log(`[R2] Uploading ${filePath} -> ${r2Config.bucket}/${key}`);
 
-  const response = await client.send(new PutObjectCommand({
-    Bucket: r2Config.bucket,
-    Key: key,
-    Body: fs.createReadStream(filePath),
-    ContentLength: fileSize,
-    ContentType: contentType,
-  }));
+  const partSize = r2Config.partSize || SERVER_CONFIG.r2UploadPartSize;
+  const queueSize = r2Config.queueSize || SERVER_CONFIG.r2UploadQueueSize;
+
+  const upload = new Upload({
+    client,
+    queueSize,
+    partSize,
+    leavePartsOnError: false,
+    params: {
+      Bucket: r2Config.bucket,
+      Key: key,
+      Body: fs.createReadStream(filePath),
+      ContentLength: fileSize,
+      ContentType: contentType,
+    },
+  });
+
+  upload.on('httpUploadProgress', (progress) => {
+    if (!progress.loaded || !progress.total) {
+      return;
+    }
+
+    const percent = ((progress.loaded / progress.total) * 100).toFixed(1);
+    console.log(`[R2] Upload progress: ${percent}% (${progress.loaded}/${progress.total} bytes)`);
+  });
+
+  const response = await upload.done();
 
   console.log(`[R2] Upload complete: ${r2Config.bucket}/${key}`);
 

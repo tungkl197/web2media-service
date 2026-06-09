@@ -5,7 +5,6 @@
  */
 
 const ffmpeg = require('fluent-ffmpeg');
-const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -13,9 +12,17 @@ const https = require('https');
 const { execFile } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const { SERVER_CONFIG } = require('../config');
+const {
+  FFMPEG_PATH,
+  getCpuMp4Encoder,
+  getHardwareDecodeInputOptions,
+  getMp4EncoderOutputOptions,
+  selectMp4VideoEncoder,
+  shouldFallbackToCpu,
+} = require('./ffmpegHardware');
 
-// Set ffmpeg path from installer
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+// Set ffmpeg path. FFMPEG_PATH can point to a GPU-enabled FFmpeg build.
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
 
 const AUDIO_EXTENSIONS_BY_MIME = {
   'audio/aac': '.aac',
@@ -142,7 +149,7 @@ async function downloadAudioFiles(audioUrls, options = {}) {
 
 function getMediaDurationSeconds(filePath) {
   return new Promise((resolve, reject) => {
-    execFile(ffmpegInstaller.path, ['-hide_banner', '-i', filePath], { timeout: 30000 }, (error, stdout, stderr) => {
+    execFile(FFMPEG_PATH, ['-hide_banner', '-i', filePath], { timeout: 30000 }, (error, stdout, stderr) => {
       const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
       if (!match) {
         return reject(new Error(`Không đọc được thời lượng audio: ${path.basename(filePath)}`));
@@ -178,7 +185,7 @@ async function getTotalAudioDurationSeconds(audioPaths) {
  * @param {number} options.fps - Frames per second
  * @returns {Promise<string>} Path to output file
  */
-function convertToMp4(inputPath, outputPath, options = {}) {
+function convertToMp4Cpu(inputPath, outputPath, options = {}) {
   return new Promise((resolve, reject) => {
     const bitrate = Math.round((options.bitrate || 5000000) / 1000); // Convert to kbps
 
@@ -212,6 +219,58 @@ function convertToMp4(inputPath, outputPath, options = {}) {
       })
       .run();
   });
+}
+
+async function convertToMp4(inputPath, outputPath, options = {}) {
+  const bitrate = Math.round((options.bitrate || 5000000) / 1000); // Convert to kbps
+  const selectedEncoder = await selectMp4VideoEncoder();
+  const hardwareDecodeEnabled = getHardwareDecodeInputOptions().length > 0;
+
+  async function runWithEncoder(encoder, disableHardwareDecode = false) {
+    return new Promise((resolve, reject) => {
+      const command = ffmpeg(inputPath);
+      const inputOptions = getHardwareDecodeInputOptions({ disabled: disableHardwareDecode });
+
+      if (inputOptions.length) {
+        command.inputOptions(inputOptions);
+      }
+
+      console.log(`[Converter] Converting to MP4 with ${encoder.label}: ${inputPath} -> ${outputPath}`);
+
+      command
+        .output(outputPath)
+        .videoCodec(encoder.name)
+        .videoBitrate(`${bitrate}k`)
+        .outputOptions(getMp4EncoderOutputOptions(encoder))
+        .fps(options.fps || 60)
+        .on('start', (cmd) => {
+          console.log(`[Converter] FFmpeg command: ${cmd}`);
+        })
+        .on('progress', (progress) => {
+          if (progress.percent) {
+            console.log(`[Converter] Progress: ${progress.percent.toFixed(1)}%`);
+          }
+        })
+        .on('end', () => {
+          console.log(`[Converter] MP4 conversion complete: ${outputPath}`);
+          resolve(outputPath);
+        })
+        .on('error', reject)
+        .run();
+    });
+  }
+
+  try {
+    return await runWithEncoder(selectedEncoder);
+  } catch (err) {
+    if ((selectedEncoder.hardware || hardwareDecodeEnabled) && shouldFallbackToCpu()) {
+      cleanupFiles([outputPath]);
+      console.warn(`[Converter] Hardware MP4 path failed (${err.message}). Retrying with CPU libx264.`);
+      return convertToMp4Cpu(inputPath, outputPath, options);
+    }
+
+    throw new Error(`Loi chuyen doi MP4: ${err.message}`);
+  }
 }
 
 /**
@@ -276,7 +335,7 @@ function convertToGif(inputPath, outputPath, options = {}) {
  * Audio files are concatenated in request order. The video stream is looped
  * until the concatenated audio ends.
  */
-function mergeLoopedVideoWithAudio(videoPath, audioPaths, outputPath, format, options = {}) {
+function mergeLoopedVideoWithAudioCpu(videoPath, audioPaths, outputPath, format, options = {}) {
   return new Promise((resolve, reject) => {
     if (!audioPaths.length) {
       return reject(new Error('audioUrls không được rỗng khi ghép audio'));
@@ -364,6 +423,102 @@ function mergeLoopedVideoWithAudio(videoPath, audioPaths, outputPath, format, op
       })
       .run();
   });
+}
+
+async function mergeLoopedVideoWithAudio(videoPath, audioPaths, outputPath, format, options = {}) {
+  if (format !== 'mp4') {
+    return mergeLoopedVideoWithAudioCpu(videoPath, audioPaths, outputPath, format, options);
+  }
+
+  if (!audioPaths.length) {
+    throw new Error('audioUrls khong duoc rong khi ghep audio');
+  }
+
+  const bitrate = Math.round((options.bitrate || 5000000) / 1000);
+  const selectedEncoder = await selectMp4VideoEncoder();
+  const hardwareDecodeEnabled = getHardwareDecodeInputOptions().length > 0;
+
+  async function runWithEncoder(encoder, disableHardwareDecode = false) {
+    return new Promise((resolve, reject) => {
+      const inputOptions = [
+        ...getHardwareDecodeInputOptions({ disabled: disableHardwareDecode }),
+        '-stream_loop -1',
+      ];
+      const command = ffmpeg()
+        .input(videoPath)
+        .inputOptions(inputOptions);
+
+      for (const audioPath of audioPaths) {
+        command.input(audioPath);
+      }
+
+      const durationOption = options.audioDurationSeconds
+        ? [`-t ${options.audioDurationSeconds.toFixed(3)}`]
+        : [];
+
+      if (audioPaths.length === 1) {
+        command.outputOptions([
+          '-map 0:v:0',
+          '-map 1:a:0',
+          '-shortest',
+          ...durationOption,
+        ]);
+      } else {
+        const normalizedAudioFilters = audioPaths.map((_, index) =>
+          `[${index + 1}:a:0]aformat=sample_rates=48000:channel_layouts=stereo[a${index}]`
+        );
+        const audioInputs = audioPaths.map((_, index) => `[a${index}]`).join('');
+        command
+          .complexFilter([
+            ...normalizedAudioFilters,
+            `${audioInputs}concat=n=${audioPaths.length}:v=0:a=1[aout]`,
+          ])
+          .outputOptions([
+            '-map 0:v:0',
+            '-map [aout]',
+            '-shortest',
+            ...durationOption,
+          ]);
+      }
+
+      console.log(`[Converter] Merging audio into looped MP4 with ${encoder.label}: ${videoPath} -> ${outputPath}`);
+
+      command
+        .videoCodec(encoder.name)
+        .audioCodec('aac')
+        .videoBitrate(`${bitrate}k`)
+        .audioBitrate('192k')
+        .fps(options.fps || 60)
+        .outputOptions(getMp4EncoderOutputOptions(encoder))
+        .output(outputPath)
+        .on('start', (cmd) => {
+          console.log(`[Converter] FFmpeg command: ${cmd}`);
+        })
+        .on('progress', (progress) => {
+          if (progress.timemark) {
+            console.log(`[Converter] Merge progress: ${progress.timemark}`);
+          }
+        })
+        .on('end', () => {
+          console.log(`[Converter] Audio merge complete: ${outputPath}`);
+          resolve(outputPath);
+        })
+        .on('error', reject)
+        .run();
+    });
+  }
+
+  try {
+    return await runWithEncoder(selectedEncoder);
+  } catch (err) {
+    if ((selectedEncoder.hardware || hardwareDecodeEnabled) && shouldFallbackToCpu()) {
+      cleanupFiles([outputPath]);
+      console.warn(`[Converter] Hardware MP4 audio merge path failed (${err.message}). Retrying with CPU libx264.`);
+      return mergeLoopedVideoWithAudioCpu(videoPath, audioPaths, outputPath, format, options);
+    }
+
+    throw new Error(`Loi ghep audio: ${err.message}`);
+  }
 }
 
 /**
