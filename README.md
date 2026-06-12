@@ -1,42 +1,35 @@
 # Web2Media Service
 
-Service Node.js/Express để render video firefly, ghép audio từ URL, upload file đầu ra lên Cloudflare R2 và trả về R2 URL qua hệ thống job queue.
+Python/FastAPI service de render video firefly, ghep audio tu URL, upload video dau ra len Cloudflare R2 va tra ve R2 URL qua job queue.
 
-## Tính năng
+## Tinh nang
 
-- Render animation firefly bằng Puppeteer/Chromium.
-- Nhận cấu hình video qua `config`.
-- Nhận danh sách audio qua `audioUrls`.
-- Ghép nhiều audio theo đúng thứ tự truyền vào.
-- Nếu audio dài hơn video, video sẽ tự lặp cho đến hết audio.
-- Upload video cuối cùng lên Cloudflare R2.
-- Lấy cấu hình R2 từ bảng `runtime_configs` trong Supabase.
-- API chạy bất đồng bộ bằng job queue.
-- Hỗ trợ GPU cho Chromium và FFmpeg khi môi trường có GPU/encoder phù hợp.
+- Render animation firefly bang Playwright/Chromium.
+- Nhan cau hinh video trong object `config`.
+- Nhan danh sach audio trong `audioUrls`.
+- Ghep nhieu audio theo dung thu tu request.
+- Neu audio dai hon video, video tu lap den het audio.
+- Upload file cuoi cung len Cloudflare R2.
+- Lay cau hinh R2 tu bang `runtime_configs` trong Supabase.
+- API bat dong bo bang in-memory job queue.
+- Ho tro GPU cho Chromium va FFmpeg: NVENC, QSV, AMF, fallback CPU.
 
-## Yêu cầu
+## Yeu cau
 
-- Node.js 20+
+- Python 3.12+
 - FFmpeg
-- Chromium dependencies cho Puppeteer
-- Supabase project có bảng `runtime_configs`
-- Cloudflare R2 bucket và public domain/base URL
+- Playwright Chromium
+- Supabase project co bang `runtime_configs`
+- Cloudflare R2 bucket va public base URL
 
-Trên Windows, nên cài FFmpeg riêng và trỏ `FFMPEG_PATH` tới binary đó, ví dụ:
-
-```env
-FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
-```
-
-Nếu không cấu hình `FFMPEG_PATH`, service sẽ thử dùng `ffmpeg` trong PATH trước, sau đó mới fallback về FFmpeg bundled từ `@ffmpeg-installer/ffmpeg`.
-
-## Cài đặt
+## Cai dat local
 
 ```bash
-npm install
+pip install -r requirements.txt
+python -m playwright install chromium
 ```
 
-Tạo file `.env` theo `.env.example`:
+Tao file `.env` theo `.env.example`:
 
 ```env
 PORT=4526
@@ -61,45 +54,45 @@ FFMPEG_HWACCEL=auto
 FFMPEG_HARDWARE_FALLBACK=true
 ```
 
-## Chạy server
+Tren Windows, nen cai FFmpeg rieng va tro ro path:
+
+```env
+FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
+```
+
+## Chay server
 
 ```bash
-npm start
+python -m uvicorn app.main:app --host 0.0.0.0 --port 4526
 ```
 
-Dev mode:
-
-```bash
-npm run dev
-```
-
-Mặc định server chạy ở:
-
-```text
-http://localhost:4526
-```
-
-Swagger UI:
+Docs:
 
 ```text
 http://localhost:4526/docs
 ```
 
-## Cấu hình R2 trong Supabase
+Health:
 
-API không nhận cấu hình R2 trong request body. Service đọc từ bảng `runtime_configs`.
+```text
+http://localhost:4526/api/health
+```
 
-Các field cần có:
+## Cau hinh R2 trong Supabase
 
-- `accountId` hoặc `endpoint`
+API khong nhan cau hinh R2 trong request body. Service doc tu bang `runtime_configs`.
+
+Can co cac field:
+
+- `accountId` hoac `endpoint`
 - `accessKeyId`
 - `secretAccessKey`
 - `bucket`
 - `publicBaseUrl`
 - `keyPrefix` optional
-- `region` optional, mặc định là `auto`
+- `region` optional, mac dinh `auto`
 
-Ví dụ 1 row dạng object:
+Vi du 1 row:
 
 ```json
 {
@@ -115,7 +108,7 @@ Ví dụ 1 row dạng object:
 }
 ```
 
-Hoặc có thể lưu dạng key/value rời:
+Hoac co the luu key/value roi:
 
 ```text
 R2_ACCOUNT_ID
@@ -126,9 +119,9 @@ R2_PUBLIC_DOMAIN
 R2_KEY_PREFIX
 ```
 
-## API Flow
+## API flow
 
-### 1. Tạo job video
+### Tao job video
 
 ```bash
 curl -X POST "http://localhost:4526/api/firefly-video-record" \
@@ -161,28 +154,13 @@ Response:
 }
 ```
 
-### 2. Check status
+### Check status
 
 ```bash
-curl "http://localhost:4526/api/firefly-video-record/status/2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0"
+curl "http://localhost:4526/api/firefly-video-record/status/<jobId>"
 ```
 
-Khi đang chạy:
-
-```json
-{
-  "success": true,
-  "jobId": "2c617f18-7f8f-4e4f-9245-cbd3e7e35aa0",
-  "status": "running",
-  "progress": {
-    "step": "uploading",
-    "message": "Uploading video to R2",
-    "percent": 85
-  }
-}
-```
-
-Khi hoàn tất:
+Khi xong:
 
 ```json
 {
@@ -201,70 +179,41 @@ Khi hoàn tất:
 }
 ```
 
-Status có thể là:
+Status co the la:
 
 - `queued`
 - `running`
 - `done`
 - `failed`
 
-Lưu ý: job queue hiện là in-memory. Nếu restart server, danh sách job trong memory sẽ mất. File đã upload thành công lên R2 vẫn còn trên R2.
+Luu y: job queue hien la in-memory. Restart server se mat danh sach job trong memory. File da upload thanh cong len R2 van con tren R2.
 
-## Endpoint khác
+## GPU va FFmpeg
 
-```text
-GET /api/health
-GET /api/presets
-GET /docs
-```
+Service tu chon encoder MP4 theo thu tu:
 
-`GET /api/health` trả thêm thống kê queue:
+1. `h264_nvenc` cho NVIDIA
+2. `h264_qsv` cho Intel Quick Sync
+3. `h264_amf` cho AMD
+4. `libx264` CPU fallback
 
-```json
-{
-  "fireflyVideoJobs": {
-    "queued": 0,
-    "running": 1,
-    "total": 4,
-    "concurrency": 3
-  }
-}
-```
+Truoc khi chon encoder GPU, service chay smoke test nho. Encoder nao co trong FFmpeg nhung khong encode duoc se bi bo qua.
 
-## GPU và FFmpeg
-
-Service cố gắng dùng GPU nhiều nhất có thể:
-
-- Chromium render bật GPU mặc định.
-- FFmpeg chọn encoder phần cứng theo thứ tự:
-  - `h264_nvenc` cho NVIDIA
-  - `h264_qsv` cho Intel Quick Sync
-  - `h264_amf` cho AMD
-  - fallback `libx264` CPU
-
-Trước khi chọn encoder GPU, service chạy smoke test nhỏ. Nếu encoder có trong FFmpeg nhưng không encode được thật, service sẽ bỏ qua encoder đó.
-
-Log nên có dạng:
+Log mong doi:
 
 ```text
 [FFmpeg] Binary: C:\ffmpeg\bin\ffmpeg.exe
 [FFmpeg] MP4 encoder: NVIDIA NVENC
 ```
 
-Ép encoder cụ thể:
-
-```env
-FFMPEG_VIDEO_ENCODER=h264_nvenc
-```
-
-Tắt GPU FFmpeg:
+Tat GPU FFmpeg:
 
 ```env
 FFMPEG_VIDEO_ENCODER=cpu
 FFMPEG_HWACCEL=off
 ```
 
-Tắt GPU Chromium:
+Tat GPU Chromium:
 
 ```env
 BROWSER_GPU_ENABLED=false
@@ -272,50 +221,51 @@ BROWSER_GPU_ENABLED=false
 
 ## Docker
 
-Chạy CPU/default:
+Chay default:
 
 ```bash
 docker compose up -d --build
 ```
 
-Chạy với GPU:
+Chay voi GPU:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 ```
 
-Container GPU cần NVIDIA driver và NVIDIA Container Toolkit trên host.
+Container GPU can NVIDIA driver va NVIDIA Container Toolkit tren host.
 
-## Lỗi thường gặp
+## Endpoint khac
 
-### `NetworkError when attempting to fetch resource`
+```text
+GET /api/health
+GET /api/presets
+GET /docs
+```
 
-Thường do gọi sai port. Docker compose hiện map port `4526`, nên dùng:
+## Loi thuong gap
+
+### Goi sai port
+
+Docker compose map port `4526`, nen dung:
 
 ```text
 http://localhost:4526/api/firefly-video-record
 ```
 
-### `write ECONNRESET` khi upload R2
+### R2 upload bi reset
 
-Upload R2 đã dùng multipart upload. Có thể giảm tải upload bằng:
+Upload R2 dung multipart. Co the giam concurrency:
 
 ```env
 R2_UPLOAD_QUEUE_SIZE=1
 R2_UPLOAD_PART_SIZE=8388608
 ```
 
-### FFmpeg báo chọn NVENC nhưng fail
+### FFmpeg co NVENC nhung fail
 
-Kiểm tra log `FFmpeg Binary`. Nếu đang dùng FFmpeg bundled, cài FFmpeg system mới hơn và cấu hình:
+Dung FFmpeg system moi hon va tro ro:
 
 ```env
 FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
-```
-
-## Scripts
-
-```bash
-npm start
-npm run dev
 ```
